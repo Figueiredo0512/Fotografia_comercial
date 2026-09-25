@@ -187,16 +187,20 @@ def create_app(test_config=None):
             'Se você não solicitou este acesso, ignore esta mensagem.\n'
         )
         context = ssl.create_default_context()
+        smtp_password = config['password']
+        # O Gmail exibe senhas de app em quatro grupos; os espaços são apenas formatação.
+        if str(config.get('host', '')).lower() == 'smtp.gmail.com':
+            smtp_password = ''.join(str(smtp_password).split())
         if config.get('security') == 'ssl':
             with smtplib.SMTP_SSL(config['host'], int(config['port']), timeout=15, context=context) as smtp:
-                smtp.login(config['username'], config['password'])
+                smtp.login(config['username'], smtp_password)
                 smtp.send_message(message)
         else:
             with smtplib.SMTP(config['host'], int(config['port']), timeout=15) as smtp:
                 smtp.ehlo()
                 smtp.starttls(context=context)
                 smtp.ehlo()
-                smtp.login(config['username'], config['password'])
+                smtp.login(config['username'], smtp_password)
                 smtp.send_message(message)
 
     def login_page(error=None, status=200, email=''):
@@ -369,6 +373,8 @@ def main():
         username = input('Usuário SMTP: ').strip()
         sender = input('E-mail remetente: ').strip()
         password = getpass.getpass('Senha de app/credencial SMTP (não é a senha do painel): ')
+        if host.lower() == 'smtp.gmail.com':
+            password = ''.join(password.split())
         if not host or port not in range(1, 65536) or not username or not password or not valid_email(sender):
             parser.error('Configuração incompleta ou inválida.')
         private_write(Path(app.config['DATA_DIR']) / 'smtp.json', json.dumps(dict(host=host, port=port, security=security, username=username, sender=sender, password=password)))

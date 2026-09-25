@@ -151,11 +151,12 @@ class AuthenticationTests(unittest.TestCase):
 
     def test_smtp_uses_tls_and_registered_recipient(self):
         self.app.config['SEND_CODE'] = None
-        self.app.config['SMTP'] = {'host': 'smtp.example.test', 'port': 587, 'username': 'sender', 'password': 'test-only', 'sender': 'sender@example.test'}
+        self.app.config['SMTP'] = {'host': 'smtp.gmail.com', 'port': 587, 'username': 'sender', 'password': 'abcd efgh ijkl mnop', 'sender': 'sender@example.test'}
         with patch('server.smtplib.SMTP') as transport:
             self.assertEqual(self.login().status_code, 303)
             smtp = transport.return_value.__enter__.return_value
             smtp.starttls.assert_called_once()
+            smtp.login.assert_called_once_with('sender', 'abcdefghijklmnop')
             message = smtp.send_message.call_args.args[0]
             self.assertEqual(message['To'], 'admin@example.test')
             self.assertRegex(message.get_content(), r'\b\d{6}\b')
