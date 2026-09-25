@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>{% block title %}Administração{% endblock %} — Fotografia gastronômica</title>
+  <link rel="stylesheet" href="/admin.css">
+</head>
+<body class="{% block body_class %}auth-page{% endblock %}">
+  <header class="admin-header">
+    <a class="brand" href="/" aria-label="Voltar ao site"><span class="monogram" aria-hidden="true">fg.</span><span>FOTOGRAFIA<br>GASTRONÔMICA</span></a>
+    <a class="back-link" href="/">Ver site <span aria-hidden="true">↗</span></a>
+  </header>
+  <main>{% block content %}{% endblock %}</main>
+  <footer class="admin-footer"><span>HORTOLÂNDIA, SP</span><span>Um olhar atento a cada detalhe.</span></footer>
+</body>
+</html>

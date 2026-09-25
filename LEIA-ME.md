@@ -1,23 +1,22 @@
 # Site local
 
-Primeira versão estática em HTML e CSS, sem dependências, cadastro ou conexão com serviços externos. Nenhum dado é enviado. Os blocos de imagem estão explicitamente identificados como espaços reservados. O contato oferece e-mail via mailto para figasphoto@gmail.com (sem exibir o endereço no texto) e WhatsApp via https://wa.me/5519992493060 para +55 (19) 99249-3060. A mensagem inicial do WhatsApp é editável e só é enviada quando o visitante confirmar no aplicativo. O Instagram foco.em.movimento está identificado como fotografia esportiva.
+Página pública em HTML e CSS, com servidor Flask nesta branch para acesso administrativo. O login envia código por e-mail quando o SMTP estiver configurado. Os blocos de imagem estão explicitamente identificados como espaços reservados. O contato oferece e-mail via mailto para figasphoto@gmail.com (sem exibir o endereço no texto) e WhatsApp via https://wa.me/5519992493060 para +55 (19) 99249-3060. A mensagem inicial do WhatsApp é editável e só é enviada quando o visitante confirmar no aplicativo. O Instagram foco.em.movimento está identificado como fotografia esportiva.
 
 ## Abrir
 
-Abra `index.html` no navegador diretamente ou execute no Terminal:
+Siga o cadastro e a instalação de [ADMINISTRACAO.md](ADMINISTRACAO.md). Depois, na pasta do repositório:
 
 ```sh
-cd Fotografia_comercial
-python3 -m http.server 8080 --bind 127.0.0.1
+.venv/bin/python server.py serve --port 8081
 ```
 
-Acesse http://127.0.0.1:8080. O servidor atende apenas este computador. Para encerrar, pressione Control+C no Terminal. Se a porta estiver ocupada, use 8081 e abra a URL com essa porta. Não sirva a pasta superior, que contém documentos comerciais internos.
+Acesse http://127.0.0.1:8081; o login fica em `/admin/login`. O servidor atende apenas este computador. Para encerrar, pressione Control+C no Terminal. Não sirva o repositório nem a pasta superior usando servidor estático: use o servidor Flask, que só entrega rotas públicas permitidas.
 
 ## Editar
 
 - `index.html`: textos, navegação, espaços das fotos e contato.
 - `styles.css`: cores, tipografia, espaçamento e adaptação de tela.
-- Nenhuma instalação ou etapa de compilação é necessária. Atualize a página depois de salvar.
+- Instalação Python descrita em ADMINISTRACAO.md; sem compilação de frontend. Atualize a página depois de salvar HTML/CSS; reinicie o servidor depois de alterar Python ou configurar SMTP.
 
 ## Próxima versão
 

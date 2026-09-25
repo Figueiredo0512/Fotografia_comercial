@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block title %}Entrar{% endblock %}
+{% block content %}
+<section class="auth-card" aria-labelledby="login-title">
+  <p class="eyebrow">ÁREA ADMINISTRATIVA</p>
+  <h1 id="login-title">Seu espaço<br>de <em>criação.</em></h1>
+  <p class="description">Entre para cuidar do seu site.</p>
+  {% if error %}<p class="message error" role="alert">{{ error }}</p>{% endif %}
+  <form method="post" action="/admin/login">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field"><label for="email">E-mail</label><input id="email" name="email" type="email" autocomplete="username" maxlength="254" value="{{ email }}" placeholder="Seu e-mail de administrador" required></div>
+    <div class="field"><label for="password">Senha</label><input id="password" name="password" type="password" autocomplete="current-password" maxlength="256" placeholder="Sua senha" required></div>
+    <button class="button" type="submit">Entrar <span aria-hidden="true">↗</span></button>
+  </form>
+</section>
+{% endblock %}

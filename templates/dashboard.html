@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+{% block body_class %}dashboard-page{% endblock %}
+{% block title %}Painel{% endblock %}
+{% block content %}
+<section class="dashboard" aria-labelledby="dashboard-title">
+  <div class="dashboard-heading"><div><p class="eyebrow">SEU PAINEL</p><h1 id="dashboard-title">Bem-vindo<br>ao seu <em>espaço.</em></h1><p class="description">Aqui começa a administração da sua presença online.</p></div><form method="post" action="/admin/sair"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="secondary-button" type="submit">Sair da conta</button></form></div>
+  <div class="dashboard-grid">
+    <article class="panel"><p class="eyebrow">ACESSO CONFIRMADO</p><h2>Você está conectado.</h2><p class="account-email">{{ email }}</p><p>Senha e confirmação por e-mail validadas. Sua sessão dura até uma hora.</p><span class="badge">Acesso protegido</span></article>
+    <article class="panel"><p class="eyebrow">SEU SITE</p><h2>Veja como está ficando.</h2><p>Abra a página principal para acompanhar o portfólio, a apresentação e os contatos.</p><a class="button" href="/" target="_blank" rel="noopener noreferrer">Abrir site <span aria-hidden="true">↗</span></a></article>
+  </div>
+  <p class="dashboard-note">Painel inicial. As ferramentas de edição serão adicionadas conforme o que você quiser administrar.</p>
+</section>
+{% endblock %}

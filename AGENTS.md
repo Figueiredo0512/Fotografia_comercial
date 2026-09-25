@@ -8,3 +8,6 @@
 - Não inventar fotos, clientes, depoimentos ou resultados. Identificar os espaços de fotos ausentes e o Instagram esportivo como fotografia esportiva.
 - Preservar os destinos de contato aprovados. Não enviar e-mail ou WhatsApp durante testes.
 - Documentos de operação comercial ficam fora deste repositório.
+- Administração usa `server.py` (Flask). Testar alterações de autenticação com `.venv/bin/python -m unittest -v test_auth`. Não desabilitar o código por e-mail para facilitar demonstrações.
+- Senhas, banco, chave e SMTP ficam fora do repositório, na pasta privada `.fotografia-admin` da raiz superior. Nunca versionar, imprimir ou servir esses dados. Não colocar senha padrão no código.
+- Em 25/09/2026, a prioridade foi acesso administrativo primeiro; edição de textos e contatos foi escolhida para o incremento seguinte.
