@@ -69,8 +69,13 @@ class AdminPanelTests(unittest.TestCase):
         page = self.client.get('/admin/?month=2026-10')
         self.assertIn('Café da praça', page.text)
         self.assertIn('10:30', page.text)
-        self.assertIn('Levar fundo claro', page.text)
-        self.assertIn('Canon R10 e flash Godox', page.text)
+        self.assertNotIn('Levar fundo claro', page.text)
+        self.assertNotIn('Canon R10 e flash Godox', page.text)
+        with self.database() as db:
+            visit_id = db.execute('SELECT id FROM visits').fetchone()[0]
+        detail = self.client.get(f'/admin/visitas/{visit_id}')
+        self.assertIn('Levar fundo claro', detail.text)
+        self.assertIn('Canon R10 e flash Godox', detail.text)
         self.assertNotIn('10:30', self.client.get('/admin/?month=2026-11').text)
 
     def test_calendar_rejects_invalid_visit(self):

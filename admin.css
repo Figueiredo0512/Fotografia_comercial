@@ -78,6 +78,7 @@ h2 { font: normal 30px/1.2 var(--serif); margin: 0 0 22px; }
 .visit-chip { margin-top: 5px; padding: 6px 7px; border-left: 3px solid var(--accent); background: var(--sand); color: var(--ink); font-size: 11px; line-height: 1.3; }
 .visit-chip:hover { background: #e3d5c5; text-decoration: none; }
 .visit-chip strong { display: block; font-size: 10px; }
+.visit-chip span { display: block; }
 .visit-chip small { display: block; margin-top: 3px; color: var(--muted); }
 .visit-form-section { max-width: 680px; }
 .visit-form { padding: 28px; border: 1px solid var(--line); background: #fffcf7; }

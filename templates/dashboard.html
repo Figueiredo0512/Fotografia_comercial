@@ -19,7 +19,7 @@
       <div class="calendar-weekdays" aria-hidden="true"><span>seg</span><span>ter</span><span>qua</span><span>qui</span><span>sex</span><span>sáb</span><span>dom</span></div>
       <div class="calendar-grid">
         {% for week in weeks %}{% for day in week %}
-          {% if day %}<div class="calendar-day{% if day.date == today %} is-today{% endif %}"><span class="day-number">{{ day.number }}</span>{% for visit in day.visits %}<a class="visit-chip" href="/admin/visitas/{{ visit.id }}" aria-label="Abrir evento de {{ visit.client }}"><strong>{{ visit.visit_time }} · {{ 'Ensaio' if visit.visit_type == 'ensaio' else 'Reunião' }}</strong> {{ visit.client }}{% if visit.equipment %}<small>Levar: {{ visit.equipment }}</small>{% endif %}{% if visit.notes %}<small>{{ visit.notes }}</small>{% endif %}</a>{% endfor %}</div>
+          {% if day %}<div class="calendar-day{% if day.date == today %} is-today{% endif %}"><span class="day-number">{{ day.number }}</span>{% for visit in day.visits %}<a class="visit-chip" href="/admin/visitas/{{ visit.id }}" aria-label="Abrir evento de {{ visit.client }}"><strong>{{ visit.visit_time }}</strong><span>{{ visit.client }}</span></a>{% endfor %}</div>
           {% else %}<div class="calendar-day is-empty" aria-hidden="true"></div>{% endif %}
         {% endfor %}{% endfor %}
       </div>
