@@ -25,6 +25,9 @@ class AdminPanelTests(unittest.TestCase):
         with self.client.session_transaction() as session:
             return session['csrf']
 
+    def database(self):
+        return closing(sqlite3.connect(Path(self.directory.name) / 'admin.sqlite3'))
+
     def test_admin_opens_without_login(self):
         response = self.client.get('/admin/')
         self.assertEqual(response.status_code, 200)
@@ -103,6 +106,29 @@ class AdminPanelTests(unittest.TestCase):
         self.assertIn('value="05"', page)
         self.assertIn('value="55"', page)
         self.assertNotIn('<option value="07">07</option>', page)
+
+    def test_event_can_be_opened_edited_and_deleted(self):
+        self.client.get('/admin/')
+        created = self.client.post('/admin/visitas', data={
+            'csrf_token': self.csrf(), 'client': 'Café da praça',
+            'visit_date': '2026-10-17', 'visit_time': '10:30', 'visit_type': 'reuniao',
+        })
+        self.assertEqual(created.status_code, 302)
+        with self.database() as db:
+            visit_id = db.execute('SELECT id FROM visits').fetchone()[0]
+        detail = self.client.get(f'/admin/visitas/{visit_id}')
+        self.assertEqual(detail.status_code, 200)
+        self.assertIn('Salvar alterações', detail.text)
+        edited = self.client.post(f'/admin/visitas/{visit_id}/editar', data={
+            'csrf_token': self.csrf(), 'client': 'Café renovado', 'visit_date': '2026-10-18',
+            'visit_hour': '11', 'visit_minute': '05', 'visit_type': 'ensaio',
+            'equipment': 'Canon R10', 'notes': 'Confirmar endereço',
+        })
+        self.assertEqual(edited.status_code, 302)
+        self.assertIn('Café renovado', self.client.get(f'/admin/visitas/{visit_id}').text)
+        deleted = self.client.post(f'/admin/visitas/{visit_id}/excluir', data={'csrf_token': self.csrf()})
+        self.assertEqual(deleted.status_code, 302)
+        self.assertEqual(self.client.get(f'/admin/visitas/{visit_id}').status_code, 404)
 
 
 if __name__ == '__main__':

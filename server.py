@@ -139,7 +139,11 @@ def create_app(test_config=None):
             month_date = datetime.strptime(requested_month, '%Y-%m').date().replace(day=1)
         except ValueError:
             month_date = date.today().replace(day=1)
-        message = 'Visita adicionada ao calendário.' if request.args.get('saved') == '1' else None
+        message = None
+        if request.args.get('saved') == '1':
+            message = 'Visita adicionada ao calendário.'
+        elif request.args.get('deleted') == '1':
+            message = 'Visita excluída do calendário.'
         return render_dashboard(admin, month_date, message=message)
 
     def render_dashboard(admin, month_date, message=None, error=None, status=200, open_dialog=False, selected_type='reuniao', equipment_error=False):
@@ -173,47 +177,84 @@ def create_app(test_config=None):
             open_dialog=open_dialog, selected_type=selected_type, equipment_error=equipment_error,
         ), status
 
-    @app.post('/admin/visitas')
-    def add_visit():
-        client = request.form.get('client', '').strip()
-        visit_date = request.form.get('visit_date', '').strip()
+    def visit_payload():
         visit_time = request.form.get('visit_time', '').strip()
         visit_hour = request.form.get('visit_hour', '').strip()
         visit_minute = request.form.get('visit_minute', '').strip()
         if visit_hour or visit_minute:
             visit_time = f'{visit_hour}:{visit_minute}'
-        notes = request.form.get('notes', '').strip()
-        visit_type = request.form.get('visit_type', '').strip().lower()
-        equipment = request.form.get('equipment', '').strip()
+        payload = {
+            'client': request.form.get('client', '').strip(),
+            'visit_date': request.form.get('visit_date', '').strip(),
+            'visit_time': visit_time,
+            'notes': request.form.get('notes', '').strip(),
+            'visit_type': request.form.get('visit_type', '').strip().lower(),
+            'equipment': request.form.get('equipment', '').strip(),
+        }
         try:
-            parsed_date = date.fromisoformat(visit_date)
-            parsed_time = datetime.strptime(visit_time, '%H:%M')
+            payload['parsed_date'] = date.fromisoformat(payload['visit_date'])
+            parsed_time = datetime.strptime(payload['visit_time'], '%H:%M')
             if parsed_time.minute % 5:
                 raise ValueError
         except ValueError:
+            return None, 'Informe uma data e um horário válidos.'
+        if payload['visit_type'] not in {'reuniao', 'ensaio'}:
+            return None, 'Escolha se a visita será uma reunião ou um ensaio.'
+        if payload['visit_type'] == 'ensaio' and not payload['equipment']:
+            return None, 'Informe os equipamentos necessários para o ensaio.'
+        if not payload['client'] or len(payload['client']) > 120 or len(payload['notes']) > 500 or len(payload['equipment']) > 500:
+            return None, 'Preencha o estabelecimento e mantenha os limites indicados.'
+        return payload, None
+
+    @app.post('/admin/visitas')
+    def add_visit():
+        payload, error = visit_payload()
+        if error:
             admin = db().execute('SELECT email FROM admin WHERE id = 1').fetchone()
             month_date = date.today().replace(day=1)
+            visit_date = request.form.get('visit_date', '')
             if len(visit_date) >= 7:
                 try:
                     month_date = datetime.strptime(visit_date[:7], '%Y-%m').date().replace(day=1)
                 except ValueError:
                     pass
-            return render_dashboard(admin, month_date, error='Informe uma data e um horário válidos.', status=400)
-        if visit_type not in {'reuniao', 'ensaio'}:
-            admin = db().execute('SELECT email FROM admin WHERE id = 1').fetchone()
-            return render_dashboard(admin, parsed_date.replace(day=1), error='Escolha se a visita será uma reunião ou um ensaio.', status=400, open_dialog=True, selected_type=visit_type)
-        if visit_type == 'ensaio' and not equipment:
-            admin = db().execute('SELECT email FROM admin WHERE id = 1').fetchone()
-            return render_dashboard(admin, parsed_date.replace(day=1), error='Informe os equipamentos necessários para o ensaio.', status=400, open_dialog=True, selected_type='ensaio', equipment_error=True)
-        if not client or len(client) > 120 or len(notes) > 500 or len(equipment) > 500:
-            admin = db().execute('SELECT email FROM admin WHERE id = 1').fetchone()
-            return render_dashboard(admin, parsed_date.replace(day=1), error='Preencha o estabelecimento e mantenha os limites indicados.', status=400)
+            return render_dashboard(admin, month_date, error=error, status=400, open_dialog=True, selected_type=request.form.get('visit_type', 'reuniao'), equipment_error='equipamentos' in error)
         with db() as connection:
             connection.execute(
                 'INSERT INTO visits (visit_date, visit_time, client, notes, visit_type, equipment, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-                (visit_date, visit_time, client, notes, visit_type, equipment, datetime.now().isoformat(timespec='seconds')),
+                (payload['visit_date'], payload['visit_time'], payload['client'], payload['notes'], payload['visit_type'], payload['equipment'], datetime.now().isoformat(timespec='seconds')),
             )
-        return redirect(f'/admin/?month={parsed_date.strftime("%Y-%m")}&saved=1')
+        return redirect(f'/admin/?month={payload["parsed_date"].strftime("%Y-%m")}&saved=1')
+
+    @app.get('/admin/visitas/<int:visit_id>')
+    def visit_detail(visit_id):
+        visit = db().execute('SELECT * FROM visits WHERE id = ?', (visit_id,)).fetchone()
+        if not visit:
+            abort(404)
+        return render_template('visit.html', visit=visit, error=None)
+
+    @app.post('/admin/visitas/<int:visit_id>/editar')
+    def edit_visit(visit_id):
+        existing = db().execute('SELECT * FROM visits WHERE id = ?', (visit_id,)).fetchone()
+        if not existing:
+            abort(404)
+        payload, error = visit_payload()
+        if error:
+            return render_template('visit.html', visit={**dict(existing), **request.form}, error=error), 400
+        with db() as connection:
+            connection.execute(
+                'UPDATE visits SET visit_date = ?, visit_time = ?, client = ?, notes = ?, visit_type = ?, equipment = ? WHERE id = ?',
+                (payload['visit_date'], payload['visit_time'], payload['client'], payload['notes'], payload['visit_type'], payload['equipment'], visit_id),
+            )
+        return redirect(f'/admin/visitas/{visit_id}?saved=1')
+
+    @app.post('/admin/visitas/<int:visit_id>/excluir')
+    def delete_visit(visit_id):
+        with db() as connection:
+            deleted = connection.execute('DELETE FROM visits WHERE id = ?', (visit_id,)).rowcount
+        if not deleted:
+            abort(404)
+        return redirect('/admin/?deleted=1')
 
     @app.errorhandler(400)
     @app.errorhandler(404)

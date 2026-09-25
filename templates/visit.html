@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+{% block body_class %}dashboard-page{% endblock %}
+{% block title %}Evento{% endblock %}
+{% block content %}
+<section class="visit-detail" aria-labelledby="visit-title">
+  <a class="return-link" href="/admin/?month={{ visit.visit_date[:7] }}">← Voltar ao calendário</a>
+  <p class="eyebrow">EVENTO DA AGENDA</p>
+  <h1 id="visit-title">{{ visit.client }}</h1>
+  {% if request.args.get('saved') == '1' %}<p class="message success" role="status">Evento atualizado.</p>{% endif %}
+  {% if error %}<p class="message error" role="alert">{{ error }}</p>{% endif %}
+  <form class="visit-form detail-form" method="post" action="/admin/visitas/{{ visit.id }}/editar">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <fieldset class="visit-type"><legend>Tipo de compromisso</legend><label><input type="radio" name="visit_type" value="reuniao"{% if visit.visit_type != 'ensaio' %} checked{% endif %}> Reunião</label><label><input type="radio" name="visit_type" value="ensaio"{% if visit.visit_type == 'ensaio' %} checked{% endif %}> Ensaio</label></fieldset>
+    <div class="field"><label for="client">Estabelecimento ou cliente</label><input id="client" name="client" maxlength="120" required value="{{ visit.client }}"></div>
+    <div class="form-row"><div class="field"><label for="visit_date">Data</label><input id="visit_date" name="visit_date" type="date" required value="{{ visit.visit_date }}"></div><div class="field"><label>Horário</label><div class="time-selects"><select id="visit_hour" name="visit_hour" required aria-label="Hora">{% for hour in range(24) %}<option value="{{ '%02d'|format(hour) }}"{% if visit.visit_time[:2] == '%02d'|format(hour) %} selected{% endif %}>{{ '%02d'|format(hour) }}h</option>{% endfor %}</select><span aria-hidden="true">:</span><select id="visit_minute" name="visit_minute" required aria-label="Minutos">{% for minute in range(0, 60, 5) %}<option value="{{ '%02d'|format(minute) }}"{% if visit.visit_time[3:5] == '%02d'|format(minute) %} selected{% endif %}>{{ '%02d'|format(minute) }}</option>{% endfor %}</select></div></div></div>
+    <div class="field"><label for="equipment">Equipamentos para levar <span>(obrigatório em ensaio)</span></label><textarea id="equipment" name="equipment" maxlength="500" rows="3">{{ visit.equipment }}</textarea></div>
+    <div class="field"><label for="notes">Observações <span>(opcional)</span></label><textarea id="notes" name="notes" maxlength="500" rows="3">{{ visit.notes }}</textarea></div>
+    <button class="button" type="submit">Salvar alterações <span aria-hidden="true">↗</span></button>
+  </form>
+  <div class="delete-panel"><p>Se a visita não acontecer, você pode removê-la do calendário.</p><form method="post" action="/admin/visitas/{{ visit.id }}/excluir"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="delete-button" type="submit">Excluir evento</button></form></div>
+</section>
+{% endblock %}
