@@ -7,6 +7,7 @@
   <meta name="robots" content="noindex, nofollow">
   <title>Fotografia gastronômica — Hortolândia</title>
   <link rel="stylesheet" href="styles.css">
+  <script src="/carousel.js" defer></script>
 </head>
 <body>
   <a class="skip" href="#principal">Pular para o conteúdo</a>
@@ -23,7 +24,8 @@
     <div class="principles wrap"><p>Feito para valorizar<br><strong>o que você prepara.</strong></p><span>Luz com intenção</span><span>Texturas em evidência</span><span>Produtos como protagonistas</span></div>
     <section class="portfolio wrap section" id="portfolio" aria-labelledby="portfolio-title">
       <div class="section-heading"><div><p class="eyebrow">01 — PORTFÓLIO</p><h2 id="portfolio-title">Pequenos detalhes.<br><em>Muita vontade de provar.</em></h2></div><p>Uma seleção está sendo preparada.<br>Este espaço receberá somente fotografias próprias, com uso autorizado.</p></div>
-      <div class="portfolio-carousel" tabindex="0" aria-label="Seleção do portfólio. Deslize horizontalmente para ver todas as imagens.">
+      <div class="portfolio-actions"><a class="button portfolio-more" href="/portfolio">Ver mais <span aria-hidden="true">↗</span></a><button class="carousel-pause" type="button" aria-controls="portfolio-carousel" hidden>Pausar carrossel</button></div>
+      <div class="portfolio-carousel" id="portfolio-carousel" tabindex="0" aria-label="Seleção do portfólio. Deslize horizontalmente para ver todas as imagens.">
         <div class="gallery gallery-carousel">
           {% for position in range(5) %}
             {% if position < portfolio_images|length %}{% set image = portfolio_images[position] %}

@@ -14,7 +14,7 @@ from flask import Flask, abort, g, redirect, render_template, render_template_st
 
 ROOT = Path(__file__).resolve().parent
 DATA_DIR = ROOT.parent / '.fotografia-admin'
-PUBLIC_FILES = {'styles.css', 'admin.css'}
+PUBLIC_FILES = {'styles.css', 'admin.css', 'carousel.js'}
 
 
 def create_app(test_config=None):
@@ -126,7 +126,7 @@ def create_app(test_config=None):
         response.headers['X-Frame-Options'] = 'DENY'
         response.headers['Referrer-Policy'] = 'same-origin'
         response.headers['Content-Security-Policy'] = (
-            "default-src 'self'; style-src 'self'; script-src 'none'; "
+            "default-src 'self'; style-src 'self'; script-src 'self'; "
             "img-src 'self' data:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
         )
         if request.path.startswith('/admin'):
@@ -153,7 +153,8 @@ def create_app(test_config=None):
     def asset(filename):
         if filename not in PUBLIC_FILES:
             abort(404)
-        return app.response_class((ROOT / filename).read_text(), mimetype='text/css')
+        mime = 'text/javascript' if filename.endswith('.js') else 'text/css'
+        return app.response_class((ROOT / filename).read_text(), mimetype=mime)
 
     @app.get('/admin')
     @app.get('/admin/')
