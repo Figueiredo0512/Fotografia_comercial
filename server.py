@@ -62,8 +62,6 @@ def create_app(test_config=None):
         except FileExistsError:
             pass
         app.config['SECRET_KEY'] = secret_path.read_text().strip()
-    if app.config['SMTP'] is None and (data / 'smtp.json').exists():
-        app.config['SMTP'] = json.loads((data / 'smtp.json').read_text())
     db_path = data / 'admin.sqlite3'
     with closing(sqlite3.connect(db_path)) as db, db:
         db.executescript('''
@@ -172,7 +170,10 @@ def create_app(test_config=None):
         if app.testing and app.config['SEND_CODE']:
             app.config['SEND_CODE'](email, code)
             return
-        config = app.config['SMTP'] or {}
+        config = app.config['SMTP']
+        if config is None:
+            smtp_path = data / 'smtp.json'
+            config = json.loads(smtp_path.read_text()) if smtp_path.exists() else {}
         required = ['host', 'port', 'username', 'password', 'sender']
         if not all(config.get(field) for field in required):
             raise RuntimeError('SMTP não configurado')
@@ -371,7 +372,7 @@ def main():
         if not host or port not in range(1, 65536) or not username or not password or not valid_email(sender):
             parser.error('Configuração incompleta ou inválida.')
         private_write(Path(app.config['DATA_DIR']) / 'smtp.json', json.dumps(dict(host=host, port=port, security=security, username=username, sender=sender, password=password)))
-        print('Configuração salva fora do repositório. Reinicie o servidor para aplicar.')
+        print('Configuração salva fora do repositório. Será usada no próximo acesso.')
 
 
 if __name__ == '__main__':

@@ -16,7 +16,7 @@ Acesse http://127.0.0.1:8081; o login fica em `/admin/login`. O servidor atende 
 
 - `index.html`: textos, navegação, espaços das fotos e contato.
 - `styles.css`: cores, tipografia, espaçamento e adaptação de tela.
-- Instalação Python descrita em ADMINISTRACAO.md; sem compilação de frontend. Atualize a página depois de salvar HTML/CSS; reinicie o servidor depois de alterar Python ou configurar SMTP.
+- Instalação Python descrita em ADMINISTRACAO.md; sem compilação de frontend. Atualize a página depois de salvar HTML/CSS; reinicie o servidor depois de alterar Python. Alterações SMTP são lidas no próximo acesso.
 
 ## Próxima versão
 

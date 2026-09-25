@@ -48,7 +48,7 @@ Se optar pelo Gmail, use:
 
 A conta Google precisa ter verificação em duas etapas para usar senha de app. Algumas contas não disponibilizam essa opção; nesse caso, configure outro serviço SMTP compatível. Não é necessário fornecer a senha normal do Gmail. Consulte a [orientação oficial do Google](https://support.google.com/accounts/answer/185833?hl=pt-BR).
 
-Depois de configurar, encerre o servidor com Control+C e inicie novamente. Entre no navegador, confira a mensagem na caixa de entrada/spam e digite o código recebido. O envio real e a chegada à caixa de entrada precisam ser validados com a sua configuração. Em caso de falha de envio, o painel continua fechado e a tela informa o erro; não há código exibido em logs nem atalho de acesso.
+Depois de configurar, entre no navegador, confira a mensagem na caixa de entrada/spam e digite o código recebido. A configuração SMTP é lida no próximo acesso, sem exigir reinício. O envio real e a chegada à caixa de entrada precisam ser validados com a sua configuração. Em caso de falha de envio, o painel continua fechado e a tela informa o erro; não há código exibido em logs nem atalho de acesso.
 
 ## Fluxo
 

@@ -1,5 +1,6 @@
 """Testes isolados: transporte de e-mail simulado, sem enviar mensagens reais."""
 import re
+import json
 import sqlite3
 import tempfile
 import unittest
@@ -164,6 +165,14 @@ class AuthenticationTests(unittest.TestCase):
             self.assertEqual(self.login(password='incorreta').status_code, 401)
         restarted = create_app(self.config).test_client()
         self.assertEqual(self.login(client=restarted).status_code, 429)
+
+    def test_email_configuration_can_be_added_without_restarting(self):
+        self.app.config['SEND_CODE'] = None
+        config = {'host': 'smtp.example.test', 'port': 465, 'username': 'sender', 'password': 'test-only', 'sender': 'sender@example.test', 'security': 'ssl'}
+        (Path(self.directory.name) / 'smtp.json').write_text(json.dumps(config))
+        with patch('server.smtplib.SMTP_SSL') as transport:
+            self.assertEqual(self.login().status_code, 303)
+            transport.return_value.__enter__.return_value.send_message.assert_called_once()
 
     def test_csrf_protects_login_verify_resend_and_logout(self):
         for path in ['/admin/login', '/admin/verificar', '/admin/reenviar', '/admin/sair']:
