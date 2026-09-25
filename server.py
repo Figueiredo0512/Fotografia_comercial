@@ -144,9 +144,20 @@ def create_app(test_config=None):
             message = 'Visita adicionada ao calendário.'
         elif request.args.get('deleted') == '1':
             message = 'Visita excluída do calendário.'
-        return render_dashboard(admin, month_date, message=message)
+        selected_date = None
+        if request.args.get('new_date'):
+            try:
+                selected_date = date.fromisoformat(request.args['new_date'])
+                if not 2 <= selected_date.year <= 9998:
+                    raise ValueError
+            except ValueError:
+                abort(400)
+            month_date = selected_date.replace(day=1)
+        return render_dashboard(admin, month_date, message=message,
+                                open_dialog=selected_date is not None,
+                                selected_date=selected_date.isoformat() if selected_date else None)
 
-    def render_dashboard(admin, month_date, message=None, error=None, status=200, open_dialog=False, selected_type='reuniao', equipment_error=False):
+    def render_dashboard(admin, month_date, message=None, error=None, status=200, open_dialog=False, selected_type='reuniao', equipment_error=False, selected_date=None):
         month_key = month_date.strftime('%Y-%m')
         first_weekday, days_in_month = calendar.monthrange(month_date.year, month_date.month)
         previous_month = (month_date.replace(day=1) - timedelta(days=1)).replace(day=1)
@@ -175,6 +186,7 @@ def create_app(test_config=None):
             month_key=month_key, previous_month=previous_month.strftime('%Y-%m'), next_month=next_month.strftime('%Y-%m'),
             weeks=weeks, today=date.today().isoformat(), message=message, error=error,
             open_dialog=open_dialog, selected_type=selected_type, equipment_error=equipment_error,
+            selected_date=selected_date or request.form.get('visit_date') or date.today().isoformat(),
         ), status
 
     def visit_payload():

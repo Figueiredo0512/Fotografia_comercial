@@ -78,6 +78,13 @@ h2 { font: normal 30px/1.2 var(--serif); margin: 0 0 22px; }
 .calendar-day:nth-last-child(-n+7) { border-bottom: 0; }
 .calendar-day.is-empty { background: var(--paper); }
 .calendar-day.is-today { background: #f4eadf; }
+.calendar-day { position: relative; }
+.day-create { position: absolute; inset: 0; cursor: pointer; }
+.day-create:hover { background: rgba(155, 77, 53, .06); }
+.day-create:focus-visible { outline-offset: -3px; }
+.day-number { pointer-events: none; }
+.visit-chip { z-index: 1; }
+.visit-chip:hover, .visit-chip:focus-visible { z-index: 2; }
 .day-number { display: block; margin-bottom: 8px; color: var(--muted); font-size: 12px; }
 .is-today .day-number { color: var(--accent); font-weight: bold; }
 .visit-chip { position: relative; display: block; margin-top: 5px; padding: 6px 7px; border-left: 3px solid var(--accent); background: var(--sand); color: var(--ink); font-size: 11px; line-height: 1.3; }

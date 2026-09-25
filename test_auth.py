@@ -114,6 +114,17 @@ class AdminPanelTests(unittest.TestCase):
         self.assertIn('value="55"', page)
         self.assertNotIn('<option value="07">07</option>', page)
 
+    def test_selecting_calendar_day_opens_form_with_selected_date(self):
+        page = self.client.get('/admin/?month=2027-02')
+        self.assertIn('new_date=2027-02-28', page.text)
+        self.assertNotIn('new_date=2027-02-29', page.text)
+        selected = self.client.get('/admin/?month=2026-09&new_date=2027-02-28')
+        self.assertEqual(selected.status_code, 200)
+        self.assertIn('fevereiro de 2027', selected.text)
+        self.assertIn('id="new-visit-dialog" checked', selected.text)
+        self.assertIn('required value="2027-02-28"', selected.text)
+        self.assertEqual(self.client.get('/admin/?new_date=2027-02-30').status_code, 400)
+
     def test_event_can_be_opened_edited_and_deleted(self):
         self.client.get('/admin/')
         created = self.client.post('/admin/visitas', data={
