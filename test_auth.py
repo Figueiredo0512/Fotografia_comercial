@@ -21,6 +21,10 @@ class AdminPanelTests(unittest.TestCase):
         with closing(sqlite3.connect(Path(self.directory.name) / 'admin.sqlite3')) as db, db:
             db.execute('INSERT INTO admin VALUES (1, ?, ?)', ('admin@example.test', 'hash-unused'))
 
+    def csrf(self):
+        with self.client.session_transaction() as session:
+            return session['csrf']
+
     def test_admin_opens_without_login(self):
         response = self.client.get('/admin/')
         self.assertEqual(response.status_code, 200)
@@ -50,6 +54,28 @@ class AdminPanelTests(unittest.TestCase):
         self.assertEqual(response.headers['X-Frame-Options'], 'DENY')
         self.assertEqual(response.headers['X-Content-Type-Options'], 'nosniff')
         self.assertIn("form-action 'self'", response.headers['Content-Security-Policy'])
+
+    def test_calendar_lists_visits_by_month(self):
+        self.client.get('/admin/?month=2026-10')
+        response = self.client.post('/admin/visitas', data={
+            'csrf_token': self.csrf(), 'client': 'Café da praça',
+            'visit_date': '2026-10-17', 'visit_time': '10:30', 'notes': 'Levar fundo claro',
+        })
+        self.assertEqual(response.status_code, 302)
+        page = self.client.get('/admin/?month=2026-10')
+        self.assertIn('Café da praça', page.text)
+        self.assertIn('10:30', page.text)
+        self.assertIn('Levar fundo claro', page.text)
+        self.assertNotIn('10:30', self.client.get('/admin/?month=2026-11').text)
+
+    def test_calendar_rejects_invalid_visit(self):
+        self.client.get('/admin/')
+        response = self.client.post('/admin/visitas', data={
+            'csrf_token': self.csrf(), 'client': 'Café da praça',
+            'visit_date': 'data inválida', 'visit_time': '10:30',
+        })
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('data e um horário válidos', response.text)
 
 
 if __name__ == '__main__':

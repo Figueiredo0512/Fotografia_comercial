@@ -1,5 +1,7 @@
 """Servidor local: site público e painel administrativo local."""
 import argparse
+import calendar
+from datetime import date, datetime, timedelta
 import hmac
 import os
 from pathlib import Path
@@ -7,7 +9,7 @@ import secrets
 import sqlite3
 from contextlib import closing
 
-from flask import Flask, abort, g, render_template, request, session
+from flask import Flask, abort, g, redirect, render_template, request, session
 
 ROOT = Path(__file__).resolve().parent
 DATA_DIR = ROOT.parent / '.fotografia-admin'
@@ -56,6 +58,15 @@ def create_app(test_config=None):
                 bucket TEXT NOT NULL, at REAL NOT NULL
             );
             CREATE INDEX IF NOT EXISTS attempts_lookup ON attempts(bucket, at);
+            CREATE TABLE IF NOT EXISTS visits (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                visit_date TEXT NOT NULL,
+                visit_time TEXT NOT NULL,
+                client TEXT NOT NULL,
+                notes TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS visits_date_lookup ON visits(visit_date);
         ''')
     os.chmod(db_path, 0o600)
     def db():
@@ -116,7 +127,71 @@ def create_app(test_config=None):
     @app.get('/admin/')
     def dashboard():
         admin = db().execute('SELECT email FROM admin WHERE id = 1').fetchone()
-        return render_template('dashboard.html', email=admin['email'] if admin else None)
+        requested_month = request.args.get('month', '')
+        try:
+            month_date = datetime.strptime(requested_month, '%Y-%m').date().replace(day=1)
+        except ValueError:
+            month_date = date.today().replace(day=1)
+        message = 'Visita adicionada ao calendário.' if request.args.get('saved') == '1' else None
+        return render_dashboard(admin, month_date, message=message)
+
+    def render_dashboard(admin, month_date, message=None, error=None, status=200):
+        month_key = month_date.strftime('%Y-%m')
+        first_weekday, days_in_month = calendar.monthrange(month_date.year, month_date.month)
+        previous_month = (month_date.replace(day=1) - timedelta(days=1)).replace(day=1)
+        next_month = (month_date.replace(day=28) + timedelta(days=4)).replace(day=1)
+        rows = db().execute(
+            'SELECT id, visit_date, visit_time, client, notes FROM visits WHERE visit_date LIKE ? ORDER BY visit_date, visit_time, id',
+            (f'{month_key}%',),
+        ).fetchall()
+        visits_by_date = {}
+        for visit in rows:
+            visits_by_date.setdefault(visit['visit_date'], []).append(visit)
+        weeks = []
+        week = [None] * first_weekday
+        for day_number in range(1, days_in_month + 1):
+            day_key = f'{month_key}-{day_number:02d}'
+            week.append({'number': day_number, 'date': day_key, 'visits': visits_by_date.get(day_key, [])})
+            if len(week) == 7:
+                weeks.append(week)
+                week = []
+        if week:
+            weeks.append(week + [None] * (7 - len(week)))
+        month_names = ('janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro')
+        return render_template(
+            'dashboard.html', email=admin['email'] if admin else None,
+            month_label=f'{month_names[month_date.month - 1]} de {month_date.year}',
+            month_key=month_key, previous_month=previous_month.strftime('%Y-%m'), next_month=next_month.strftime('%Y-%m'),
+            weeks=weeks, today=date.today().isoformat(), message=message, error=error,
+        ), status
+
+    @app.post('/admin/visitas')
+    def add_visit():
+        client = request.form.get('client', '').strip()
+        visit_date = request.form.get('visit_date', '').strip()
+        visit_time = request.form.get('visit_time', '').strip()
+        notes = request.form.get('notes', '').strip()
+        try:
+            parsed_date = date.fromisoformat(visit_date)
+            datetime.strptime(visit_time, '%H:%M')
+        except ValueError:
+            admin = db().execute('SELECT email FROM admin WHERE id = 1').fetchone()
+            month_date = date.today().replace(day=1)
+            if len(visit_date) >= 7:
+                try:
+                    month_date = datetime.strptime(visit_date[:7], '%Y-%m').date().replace(day=1)
+                except ValueError:
+                    pass
+            return render_dashboard(admin, month_date, error='Informe uma data e um horário válidos.', status=400)
+        if not client or len(client) > 120 or len(notes) > 500:
+            admin = db().execute('SELECT email FROM admin WHERE id = 1').fetchone()
+            return render_dashboard(admin, parsed_date.replace(day=1), error='Preencha o estabelecimento e mantenha os limites indicados.', status=400)
+        with db() as connection:
+            connection.execute(
+                'INSERT INTO visits (visit_date, visit_time, client, notes, created_at) VALUES (?, ?, ?, ?, ?)',
+                (visit_date, visit_time, client, notes, datetime.now().isoformat(timespec='seconds')),
+            )
+        return redirect(f'/admin/?month={parsed_date.strftime("%Y-%m")}&saved=1')
 
     @app.errorhandler(400)
     @app.errorhandler(404)

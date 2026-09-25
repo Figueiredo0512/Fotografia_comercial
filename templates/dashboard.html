@@ -8,6 +8,33 @@
     <article class="panel"><p class="eyebrow">PAINEL LOCAL</p><h2>Área administrativa.</h2><p class="account-email">{{ email or 'contato a definir' }}</p><p>Este painel está disponível localmente para editar textos e contatos do site.</p><span class="badge">acesso direto</span></article>
     <article class="panel"><p class="eyebrow">SEU SITE</p><h2>Veja como está ficando.</h2><p>Abra a página principal para acompanhar o portfólio, a apresentação e os contatos.</p><a class="button" href="/" target="_blank" rel="noopener noreferrer">Abrir site <span aria-hidden="true">↗</span></a></article>
   </div>
-  <p class="dashboard-note">Painel local sem autenticação. As ferramentas de edição serão adicionadas conforme o que você quiser administrar.</p>
+  <section class="calendar-section" aria-labelledby="calendar-title">
+    <div class="section-heading">
+      <div><p class="eyebrow">AGENDA DE VISITAS</p><h2 id="calendar-title">Clientes e <em>ensaios.</em></h2><p class="dashboard-note">Cadastre uma visita e consulte os compromissos organizados por mês.</p></div>
+      <nav class="month-nav" aria-label="Navegar pelos meses"><a href="/admin/?month={{ previous_month }}" aria-label="Mês anterior">←</a><strong>{{ month_label }}</strong><a href="/admin/?month={{ next_month }}" aria-label="Próximo mês">→</a></nav>
+    </div>
+    {% if message %}<p class="message success" role="status">{{ message }}</p>{% endif %}
+    {% if error %}<p class="message error" role="alert">{{ error }}</p>{% endif %}
+    <div class="calendar" aria-label="Calendário de {{ month_label }}">
+      <div class="calendar-weekdays" aria-hidden="true"><span>seg</span><span>ter</span><span>qua</span><span>qui</span><span>sex</span><span>sáb</span><span>dom</span></div>
+      <div class="calendar-grid">
+        {% for week in weeks %}{% for day in week %}
+          {% if day %}<div class="calendar-day{% if day.date == today %} is-today{% endif %}"><span class="day-number">{{ day.number }}</span>{% for visit in day.visits %}<div class="visit-chip"><strong>{{ visit.visit_time }}</strong> {{ visit.client }}{% if visit.notes %}<small>{{ visit.notes }}</small>{% endif %}</div>{% endfor %}</div>
+          {% else %}<div class="calendar-day is-empty" aria-hidden="true"></div>{% endif %}
+        {% endfor %}{% endfor %}
+      </div>
+    </div>
+  </section>
+  <section class="visit-form-section" aria-labelledby="visit-form-title">
+    <p class="eyebrow">NOVA VISITA</p><h2 id="visit-form-title">Adicionar compromisso.</h2>
+    <form class="visit-form" method="post" action="/admin/visitas">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="field"><label for="client">Estabelecimento ou cliente</label><input id="client" name="client" maxlength="120" required placeholder="Ex.: Café da praça"></div>
+      <div class="form-row"><div class="field"><label for="visit_date">Data</label><input id="visit_date" name="visit_date" type="date" required value="{{ today }}"></div><div class="field"><label for="visit_time">Horário</label><input id="visit_time" name="visit_time" type="time" required></div></div>
+      <div class="field"><label for="notes">Observações <span>(opcional)</span></label><textarea id="notes" name="notes" maxlength="500" rows="3" placeholder="Endereço, produtos ou combinado"></textarea></div>
+      <button class="button" type="submit">Salvar visita <span aria-hidden="true">↗</span></button>
+    </form>
+  </section>
+  <p class="dashboard-note">Painel local sem autenticação. Os dados ficam armazenados somente neste computador.</p>
 </section>
 {% endblock %}
