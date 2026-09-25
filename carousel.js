@@ -1,7 +1,6 @@
 (() => {
   const carousel = document.querySelector('.portfolio-carousel');
-  const control = document.querySelector('.carousel-pause');
-  if (!carousel || !control) return;
+  if (!carousel) return;
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
   let paused = reduced.matches;
   let hovered = false;
@@ -9,7 +8,6 @@
   let timer;
   const update = () => {
     clearInterval(timer);
-    control.textContent = paused ? 'Retomar carrossel' : 'Pausar carrossel';
     if (paused || hovered || !visible || document.hidden || carousel.contains(document.activeElement)) return;
     timer = setInterval(() => {
       const items = [...carousel.querySelectorAll('.carousel-item')];
@@ -22,13 +20,13 @@
         behavior: reduced.matches ? 'instant' : 'smooth'});
     }, 4500);
   };
-  control.hidden = false;
-  control.addEventListener('click', () => { paused = !paused; update(); });
   carousel.addEventListener('mouseenter', () => { hovered = true; update(); });
   carousel.addEventListener('mouseleave', () => { hovered = false; update(); });
   carousel.addEventListener('focusin', update);
   carousel.addEventListener('focusout', () => setTimeout(update, 0));
   carousel.addEventListener('touchstart', () => { paused = true; update(); }, {passive: true});
+  carousel.addEventListener('touchend', () => { paused = reduced.matches; update(); }, {passive: true});
+  carousel.addEventListener('touchcancel', () => { paused = reduced.matches; update(); }, {passive: true});
   document.addEventListener('visibilitychange', update);
   reduced.addEventListener('change', () => { paused = reduced.matches; update(); });
   new IntersectionObserver(entries => { visible = entries[0].isIntersecting; update(); },

@@ -13,7 +13,7 @@
   <header class="header wrap"><a class="brand" href="/"><span class="brand-mark" aria-hidden="true">fg.</span><span>FOTOGRAFIA<br>GASTRONÔMICA</span></a><nav aria-label="Navegação principal"><a href="/">Início</a><a class="nav-contact" href="/#contato">Vamos conversar <span aria-hidden="true">↗</span></a></nav></header>
   <main class="public-portfolio wrap" id="galeria">
     <p class="eyebrow">PORTFÓLIO COMPLETO</p><h1>Imagens que abrem<br><em>o apetite.</em></h1>
-    {% if images %}<div class="public-gallery">{% for image in images %}<figure><img src="/portfolio/imagens/{{ image.filename }}" alt="{{ image.title }}" loading="lazy"><figcaption><h2>{{ image.title }}</h2>{% if image.description %}<p>{{ image.description }}</p>{% endif %}</figcaption></figure>{% endfor %}</div>
+    {% if images %}<div class="public-gallery">{% for image in images %}<figure><div class="public-photo-frame"><img src="/portfolio/imagens/{{ image.filename }}" alt="{{ image.title }}" loading="lazy"></div><figcaption><h2>{{ image.title }}</h2>{% if image.description %}<p>{{ image.description }}</p>{% endif %}</figcaption></figure>{% endfor %}</div>
     {% else %}<p class="empty-portfolio">A galeria está sendo preparada. As primeiras fotografias autorais aparecerão aqui.</p>{% endif %}
   </main>
   <footer class="wrap footer"><a class="brand" href="/"><span class="brand-mark" aria-hidden="true">fg.</span><span>FOTOGRAFIA<br>GASTRONÔMICA</span></a><p>Hortolândia, SP<br><span>Fotografia gastronômica comercial.</span></p><a href="/">Voltar ao início ↑</a></footer>
