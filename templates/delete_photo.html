@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+{% block title %}Excluir foto{% endblock %}
+{% block content %}
+<section class="auth-card">
+  <h2>Excluir “{{ photo.title }}”?</h2>
+  <p>O arquivo e seu cadastro serão removidos deste portfólio. Essa ação não pode ser desfeita. Para apenas retirar a imagem do site, use “Esconder foto” na edição.</p>
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="delete-button" name="confirm_delete" value="1" type="submit">Sim, excluir foto</button>
+  </form>
+  <a class="return-link" href="/admin/portfolio/{{ photo.id }}/editar">Cancelar e voltar à edição</a>
+</section>
+{% endblock %}

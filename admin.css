@@ -140,6 +140,9 @@ select:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
 input[type=file] { padding: 10px; }
 input[type=file]::file-selector-button { margin-right: 12px; border: 0; padding: 10px 14px; background: var(--sand); color: var(--ink); cursor: pointer; }
 .portfolio-library { margin-top: 64px; }
+.photo-edit-preview { display: block; width: 100%; max-height: 420px; object-fit: contain; background: var(--sand); margin-bottom: 24px; }
+.photo-visibility { display: flex; gap: 12px; align-items: center; font-size: 15px; }
+.photo-visibility input[type=checkbox] { width: 22px; min-height: 22px; flex-shrink: 0; accent-color: var(--accent); }
 .image-count { color: var(--muted); font-size: 12px; }
 .portfolio-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; }
 .portfolio-card { overflow: hidden; border: 1px solid var(--line); background: #fffcf7; }

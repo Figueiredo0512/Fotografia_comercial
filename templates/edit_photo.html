@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+{% block body_class %}dashboard-page{% endblock %}
+{% block title %}Editar foto{% endblock %}
+{% block content %}
+<section class="visit-detail">
+  <a class="return-link" href="/admin/portfolio">← Voltar ao portfólio</a>
+  <h1>Editar <em>foto.</em></h1>
+  {% if request.args.get('saved') == '1' %}<p class="message success" role="status">Foto atualizada.</p>{% endif %}
+  {% if error %}<p class="message error" role="alert">{{ error }}</p>{% endif %}
+  <img class="photo-edit-preview" src="/admin/portfolio/imagens/{{ photo.filename }}" alt="{{ photo.title }}">
+  <form class="portfolio-form" method="post" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field"><label for="title">Título</label><input id="title" name="title" maxlength="120" required value="{{ photo.title }}"></div>
+    <div class="field"><label for="description">Descrição</label><textarea id="description" name="description" maxlength="500" rows="4">{{ photo.description }}</textarea></div>
+    <div class="field"><label for="image">Substituir foto <span>(opcional · JPEG, PNG ou WebP)</span></label><input id="image" name="image" type="file" accept="image/jpeg,image/png,image/webp"><p class="dashboard-note">Deixe vazio para manter a imagem atual. Ao substituir, o arquivo anterior será removido.</p></div>
+    <label class="photo-visibility"><input type="checkbox" name="hidden" value="1"{% if photo.hidden %} checked{% endif %}> Esconder foto</label>
+    <p class="dashboard-note">Quando marcada, a foto aparece somente no painel, sem aparecer na página inicial nem na galeria pública. Desmarque para exibi-la novamente.</p>
+    <button class="button" type="submit">Salvar alterações</button>
+  </form>
+  <div class="delete-panel"><p>Excluir remove a foto e o cadastro.</p><a class="delete-button" href="/admin/portfolio/{{ photo.id }}/excluir">Excluir foto</a></div>
+</section>
+{% endblock %}

@@ -83,6 +83,9 @@ def create_app(test_config=None):
             );
         ''')
         columns = {row[1] for row in db.execute('PRAGMA table_info(visits)').fetchall()}
+        photo_columns = {row[1] for row in db.execute('PRAGMA table_info(portfolio_images)')}
+        if 'hidden' not in photo_columns:
+            db.execute('ALTER TABLE portfolio_images ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0')
         if 'visit_type' not in columns:
             db.execute("ALTER TABLE visits ADD COLUMN visit_type TEXT NOT NULL DEFAULT 'reuniao'")
         if 'equipment' not in columns:
@@ -135,14 +138,14 @@ def create_app(test_config=None):
     @app.get('/index.html')
     def home():
         images = db().execute(
-            'SELECT filename, title, description FROM portfolio_images ORDER BY id DESC LIMIT 5'
+            'SELECT filename, title, description FROM portfolio_images WHERE hidden = 0 ORDER BY id DESC LIMIT 5'
         ).fetchall()
         return render_template_string((ROOT / 'index.html').read_text(), portfolio_images=images)
 
     @app.get('/portfolio')
     def public_portfolio():
         images = db().execute(
-            'SELECT filename, title, description FROM portfolio_images ORDER BY id DESC'
+            'SELECT filename, title, description FROM portfolio_images WHERE hidden = 0 ORDER BY id DESC'
         ).fetchall()
         return render_template('public_portfolio.html', images=images)
 
@@ -181,9 +184,11 @@ def create_app(test_config=None):
 
     def portfolio_page(error=None, status=200):
         images = db().execute(
-            'SELECT id, filename, title, description, created_at FROM portfolio_images ORDER BY id DESC'
+            'SELECT id, filename, title, description, created_at, hidden FROM portfolio_images ORDER BY id DESC'
         ).fetchall()
         message = 'Foto adicionada ao portfólio.' if request.args.get('saved') == '1' else None
+        if request.args.get('deleted') == '1':
+            message = 'Foto excluída.'
         return render_template('portfolio.html', images=images, message=message, error=error), status
 
     @app.get('/admin/portfolio')
@@ -197,21 +202,11 @@ def create_app(test_config=None):
         description = request.form.get('description', '').strip()
         if not upload or not upload.filename or not title or len(title) > 120 or len(description) > 500:
             return portfolio_page('Selecione uma foto e preencha o título dentro dos limites indicados.', 400)
-        header = upload.stream.read(16)
-        upload.stream.seek(0)
-        signatures = (
-            (header.startswith(b'\xff\xd8\xff'), '.jpg', 'image/jpeg'),
-            (header.startswith(b'\x89PNG\r\n\x1a\n'), '.png', 'image/png'),
-            (header.startswith(b'RIFF') and header[8:12] == b'WEBP', '.webp', 'image/webp'),
-        )
-        detected = next(((extension, mime) for valid, extension, mime in signatures if valid), None)
-        if not detected:
-            return portfolio_page('O arquivo precisa ser uma imagem JPEG, PNG ou WebP válida.', 400)
-        extension, mime_type = detected
-        filename = f'{secrets.token_hex(16)}{extension}'
+        try:
+            filename, mime_type = store_photo(upload)
+        except ValueError as error:
+            return portfolio_page(str(error), 400)
         target = portfolio_dir / filename
-        upload.save(target)
-        os.chmod(target, 0o600)
         try:
             with db() as connection:
                 connection.execute(
@@ -223,14 +218,84 @@ def create_app(test_config=None):
             raise
         return redirect('/admin/portfolio?saved=1')
 
+    def store_photo(upload):
+        header = upload.stream.read(16)
+        upload.stream.seek(0)
+        signatures = (
+            (header.startswith(b'\xff\xd8\xff'), '.jpg', 'image/jpeg'),
+            (header.startswith(b'\x89PNG\r\n\x1a\n'), '.png', 'image/png'),
+            (header.startswith(b'RIFF') and header[8:12] == b'WEBP', '.webp', 'image/webp'),
+        )
+        detected = next(((extension, mime) for valid, extension, mime in signatures if valid), None)
+        if not detected:
+            raise ValueError('O arquivo precisa ser uma imagem JPEG, PNG ou WebP válida.')
+        extension, mime_type = detected
+        filename = f'{secrets.token_hex(16)}{extension}'
+        target = portfolio_dir / filename
+        upload.save(target)
+        os.chmod(target, 0o600)
+        return filename, mime_type
+
+    def find_photo(image_id):
+        photo = db().execute('SELECT * FROM portfolio_images WHERE id = ?', (image_id,)).fetchone()
+        if photo is None:
+            abort(404)
+        return dict(photo)
+
+    @app.route('/admin/portfolio/<int:image_id>/editar', methods=['GET', 'POST'])
+    def edit_photo(image_id):
+        photo = find_photo(image_id)
+        if request.method == 'GET':
+            return render_template('edit_photo.html', photo=photo)
+        values = dict(photo, title=request.form.get('title', '').strip(),
+                      description=request.form.get('description', '').strip(),
+                      hidden=int(request.form.get('hidden') == '1'))
+        if not values['title'] or len(values['title']) > 120 or len(values['description']) > 500:
+            return render_template('edit_photo.html', photo=values, error='Informe um título de até 120 caracteres e uma descrição de até 500.'), 400
+        upload = request.files.get('image')
+        replacement = None
+        if upload and upload.filename:
+            try:
+                replacement = store_photo(upload)
+            except ValueError as error:
+                return render_template('edit_photo.html', photo=values, error=str(error)), 400
+        filename, mime = replacement or (photo['filename'], photo['mime_type'])
+        try:
+            with db() as connection:
+                connection.execute('UPDATE portfolio_images SET title=?, description=?, hidden=?, filename=?, mime_type=? WHERE id=?',
+                                   (values['title'], values['description'], values['hidden'], filename, mime, image_id))
+        except sqlite3.Error:
+            if replacement:
+                (portfolio_dir / filename).unlink(missing_ok=True)
+            raise
+        if replacement:
+            (portfolio_dir / photo['filename']).unlink(missing_ok=True)
+        return redirect(f'/admin/portfolio/{image_id}/editar?saved=1', code=303)
+
+    @app.route('/admin/portfolio/<int:image_id>/excluir', methods=['GET', 'POST'])
+    def delete_photo(image_id):
+        photo = find_photo(image_id)
+        if request.method == 'GET':
+            return render_template('delete_photo.html', photo=photo)
+        if request.form.get('confirm_delete') != '1':
+            abort(400)
+        with db() as connection:
+            connection.execute('DELETE FROM portfolio_images WHERE id=?', (image_id,))
+        (portfolio_dir / photo['filename']).unlink(missing_ok=True)
+        return redirect('/admin/portfolio?deleted=1', code=303)
+
     @app.get('/portfolio/imagens/<filename>')
     @app.get('/admin/portfolio/imagens/<filename>')
     def portfolio_image(filename):
-        image = db().execute('SELECT mime_type FROM portfolio_images WHERE filename = ?', (filename,)).fetchone()
+        image = db().execute('SELECT mime_type, hidden FROM portfolio_images WHERE filename = ?', (filename,)).fetchone()
         target = portfolio_dir / filename
         if not image or not target.is_file() or target.parent != portfolio_dir:
             abort(404)
-        return send_file(target, mimetype=image['mime_type'], conditional=True, max_age=3600)
+        if image['hidden'] and not request.path.startswith('/admin/'):
+            abort(404)
+        response = send_file(target, mimetype=image['mime_type'], conditional=True)
+        response.headers['Cache-Control'] = 'no-store, private'
+        return response
 
     def render_dashboard(admin, month_date, message=None, error=None, status=200, open_dialog=False, selected_type='reuniao', equipment_error=False, selected_date=None):
         month_key = month_date.strftime('%Y-%m')

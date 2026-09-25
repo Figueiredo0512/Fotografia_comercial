@@ -99,6 +99,43 @@ class AdminPanelTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn('JPEG, PNG ou WebP válida', response.text)
 
+    def test_photo_edit_hide_replace_restore_and_delete(self):
+        self.client.get('/admin/portfolio')
+        self.client.post('/admin/portfolio/imagens', data={
+            'csrf_token': self.csrf(), 'title': 'Original',
+            'image': (BytesIO(b'\xff\xd8\xff\xe0test'), 'original.jpg'),
+        })
+        with self.database() as db:
+            image_id, filename = db.execute('SELECT id, filename FROM portfolio_images').fetchone()
+        edit_url = f'/admin/portfolio/{image_id}/editar'
+        data = dict(csrf_token=self.csrf(), title='Título novo', description='Texto novo', hidden='1')
+        self.assertEqual(self.client.post(edit_url, data=data).status_code, 303)
+        for path in ['/', '/portfolio']:
+            self.assertNotIn('Título novo', self.client.get(path).text)
+        self.assertIn('Título novo', self.client.get('/admin/portfolio').text)
+        self.assertEqual(self.client.get(f'/portfolio/imagens/{filename}').status_code, 404)
+        with self.client.get(f'/admin/portfolio/imagens/{filename}') as response:
+            self.assertEqual(response.status_code, 200)
+        bad = self.client.post(edit_url, data={**data, 'image': (BytesIO(b'invalid'), 'bad.jpg')})
+        self.assertEqual(bad.status_code, 400)
+        self.assertTrue((Path(self.directory.name) / 'portfolio' / filename).exists())
+        replaced = self.client.post(edit_url, data={**data, 'hidden': '', 'image': (BytesIO(b'\x89PNG\r\n\x1a\nreplacement'), 'new.png')})
+        self.assertEqual(replaced.status_code, 303)
+        with self.database() as db:
+            new_filename = db.execute('SELECT filename FROM portfolio_images WHERE id=?', (image_id,)).fetchone()[0]
+        self.assertNotEqual(filename, new_filename)
+        self.assertFalse((Path(self.directory.name) / 'portfolio' / filename).exists())
+        self.assertIn('Título novo', self.client.get('/').text)
+        delete_url = f'/admin/portfolio/{image_id}/excluir'
+        self.assertEqual(self.client.get(delete_url).status_code, 200)
+        self.assertEqual(self.client.post(delete_url, data={}).status_code, 400)
+        self.assertEqual(self.client.post(delete_url, data={'csrf_token': self.csrf()}).status_code, 400)
+        self.assertEqual(self.client.get(edit_url).status_code, 200)
+        self.assertEqual(self.client.post(delete_url, data={'csrf_token': self.csrf(), 'confirm_delete': '1'}).status_code, 303)
+        self.assertEqual(self.client.get(edit_url).status_code, 404)
+        self.assertFalse((Path(self.directory.name) / 'portfolio' / new_filename).exists())
+        self.assertNotIn('Título novo', self.client.get('/').text)
+
     def test_admin_without_trailing_slash_redirects_to_panel(self):
         response = self.client.get('/admin')
         self.assertEqual(response.status_code, 200)
