@@ -12,7 +12,7 @@ python3 -m venv .venv
 .venv/bin/python server.py serve --port 8081
 ```
 
-Abra http://127.0.0.1:8081. Administração: http://127.0.0.1:8081/admin/. Para encerrar o servidor, use Control+C. Consulte [ADMINISTRACAO.md](ADMINISTRACAO.md) para detalhes.
+Abra http://127.0.0.1:8081. Administração: http://127.0.0.1:8081/admin/login. Para encerrar o servidor, use Control+C. Consulte [ADMINISTRACAO.md](ADMINISTRACAO.md) para configurar senha e código por e-mail.
 
 ## Organização
 
@@ -21,7 +21,7 @@ Abra http://127.0.0.1:8081. Administração: http://127.0.0.1:8081/admin/. Para 
 - `LEIA-ME.md`: manutenção e próximas etapas.
 - `server.py`, `templates/` e `admin.css`: servidor local e painel.
 - `ADMINISTRACAO.md`: operação local e limites da versão.
-- `test_auth.py`: testes do painel sem envio de mensagens.
+- `test_auth.py`: testes do painel com transporte de e-mail simulado.
 
 ## Fluxo de alterações
 

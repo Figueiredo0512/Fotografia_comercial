@@ -1,4 +1,4 @@
-"""Testes do painel local, sem autenticação ou envio de e-mail."""
+"""Testes do painel protegido; o envio de e-mail é sempre simulado."""
 import sqlite3
 import tempfile
 import unittest
@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from contextlib import closing
 from pathlib import Path
+from werkzeug.security import generate_password_hash
 
 from server import create_app
 
@@ -15,18 +16,36 @@ class AdminPanelTests(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
+        self.password = 'senha-de-teste-longa-123'
+        self.mailbox = []
         self.app = create_app({
             'TESTING': True,
             'SECRET_KEY': 'isolated-test-key',
             'DATA_DIR': self.directory.name,
+            'SEND_CODE': lambda email, code: self.mailbox.append((email, code)),
         })
         self.client = self.app.test_client()
         with closing(sqlite3.connect(Path(self.directory.name) / 'admin.sqlite3')) as db, db:
-            db.execute('INSERT INTO admin VALUES (1, ?, ?)', ('admin@example.test', 'hash-unused'))
+            db.execute('INSERT INTO admin VALUES (1, ?, ?)', (
+                'admin@example.test', generate_password_hash(self.password, method='scrypt')
+            ))
+        self.login_and_verify()
 
-    def csrf(self):
-        with self.client.session_transaction() as session:
+    def csrf(self, client=None):
+        with (client or self.client).session_transaction() as session:
             return session['csrf']
+
+    def login_and_verify(self, client=None):
+        client = client or self.client
+        client.get('/admin/login')
+        response = client.post('/admin/login', data={
+            'csrf_token': self.csrf(client), 'email': 'admin@example.test', 'password': self.password,
+        })
+        self.assertEqual(response.status_code, 303)
+        response = client.post('/admin/verificar', data={
+            'csrf_token': self.csrf(client), 'code': self.mailbox[-1][1],
+        })
+        self.assertEqual(response.status_code, 303)
 
     def test_past_event_requires_confirmation_before_persisting(self):
         self.client.get('/admin/')
@@ -55,7 +74,7 @@ class AdminPanelTests(unittest.TestCase):
     def database(self):
         return closing(sqlite3.connect(Path(self.directory.name) / 'admin.sqlite3'))
 
-    def test_admin_opens_without_login(self):
+    def test_admin_opens_after_two_step_login(self):
         response = self.client.get('/admin/')
         self.assertEqual(response.status_code, 200)
         self.assertIn(b'admin@example.test', response.data)
@@ -140,15 +159,44 @@ class AdminPanelTests(unittest.TestCase):
         response = self.client.get('/admin')
         self.assertEqual(response.status_code, 200)
 
-    def test_authentication_pages_are_removed(self):
-        for path in ['/admin/login', '/admin/verificar', '/admin/reenviar']:
-            self.assertEqual(self.client.get(path).status_code, 404, path)
+    def test_admin_redirects_to_login_without_session(self):
+        visitor = self.app.test_client()
+        response = visitor.get('/admin/')
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.location, '/admin/login')
+        self.assertEqual(visitor.get('/admin/portfolio').location, '/admin/login')
 
-    def test_dashboard_does_not_show_authentication_controls(self):
+    def test_login_has_only_email_and_password_visible_fields(self):
+        visitor = self.app.test_client()
+        page = visitor.get('/admin/login').text
+        self.assertIn('type="email"', page)
+        self.assertIn('type="password"', page)
+        self.assertNotIn('href="/admin/portfolio"', page)
+        stylesheet = visitor.get('/admin.css')
+        self.assertEqual(stylesheet.status_code, 200)
+        self.assertEqual(stylesheet.mimetype, 'text/css')
+
+    def test_wrong_password_does_not_send_code_or_open_admin(self):
+        visitor = self.app.test_client()
+        visitor.get('/admin/login')
+        sent_before = len(self.mailbox)
+        response = visitor.post('/admin/login', data={
+            'csrf_token': self.csrf(visitor), 'email': 'admin@example.test', 'password': 'senha-incorreta',
+        })
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(len(self.mailbox), sent_before)
+        self.assertEqual(visitor.get('/admin/').location, '/admin/login')
+
+    def test_logout_revokes_session(self):
+        response = self.client.post('/admin/sair', data={'csrf_token': self.csrf()})
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(response.location, '/admin/login')
+        self.assertEqual(self.client.get('/admin/').location, '/admin/login')
+
+    def test_dashboard_shows_protected_access_and_logout(self):
         page = self.client.get('/admin/').text
-        self.assertNotIn('Sair da conta', page)
-        self.assertNotIn('login', page.lower())
-        self.assertNotIn('senha', page.lower())
+        self.assertIn('Acesso protegido', page)
+        self.assertIn('action="/admin/sair"', page)
 
     def test_private_files_remain_unavailable(self):
         for path in ['/.git/config', '/server.py', '/admin.sqlite3', '/smtp.json', '/.env', '/templates/dashboard.html', '/../.fotografia-admin/smtp.json']:
