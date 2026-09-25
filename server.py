@@ -14,7 +14,7 @@ from flask import Flask, abort, g, redirect, render_template, render_template_st
 
 ROOT = Path(__file__).resolve().parent
 DATA_DIR = ROOT.parent / '.fotografia-admin'
-PUBLIC_FILES = {'styles.css', 'admin.css', 'carousel.js'}
+PUBLIC_FILES = {'styles.css', 'admin.css', 'carousel.js', 'calendar.js'}
 
 
 def create_app(test_config=None):
