@@ -81,6 +81,14 @@ class AdminPanelTests(unittest.TestCase):
         self.assertEqual(image.mimetype, 'image/jpeg')
         self.assertTrue(image.data.startswith(b'\xff\xd8\xff'))
         image.close()
+        home = self.client.get('/')
+        self.assertIn('Café especial', home.text)
+        self.assertIn(f'/portfolio/imagens/{filename}', home.text)
+        self.assertEqual(home.text.count('class="carousel-item'), 6)
+        self.assertIn('>Ver mais</strong>', home.text)
+        full_gallery = self.client.get('/portfolio')
+        self.assertEqual(full_gallery.status_code, 200)
+        self.assertIn('Café especial', full_gallery.text)
 
     def test_portfolio_rejects_file_with_fake_image_extension(self):
         self.client.get('/admin/portfolio')

@@ -10,7 +10,7 @@ import secrets
 import sqlite3
 from contextlib import closing
 
-from flask import Flask, abort, g, redirect, render_template, request, send_file, session
+from flask import Flask, abort, g, redirect, render_template, render_template_string, request, send_file, session
 
 ROOT = Path(__file__).resolve().parent
 DATA_DIR = ROOT.parent / '.fotografia-admin'
@@ -134,7 +134,17 @@ def create_app(test_config=None):
     @app.get('/')
     @app.get('/index.html')
     def home():
-        return app.response_class((ROOT / 'index.html').read_text(), mimetype='text/html')
+        images = db().execute(
+            'SELECT filename, title, description FROM portfolio_images ORDER BY id DESC LIMIT 5'
+        ).fetchall()
+        return render_template_string((ROOT / 'index.html').read_text(), portfolio_images=images)
+
+    @app.get('/portfolio')
+    def public_portfolio():
+        images = db().execute(
+            'SELECT filename, title, description FROM portfolio_images ORDER BY id DESC'
+        ).fetchall()
+        return render_template('public_portfolio.html', images=images)
 
     @app.get('/<filename>')
     def asset(filename):
@@ -177,7 +187,7 @@ def create_app(test_config=None):
         return render_template('portfolio.html', images=images, message=message, error=error), status
 
     @app.get('/admin/portfolio')
-    def portfolio():
+    def portfolio_admin():
         return portfolio_page()
 
     @app.post('/admin/portfolio/imagens')
@@ -213,6 +223,7 @@ def create_app(test_config=None):
             raise
         return redirect('/admin/portfolio?saved=1')
 
+    @app.get('/portfolio/imagens/<filename>')
     @app.get('/admin/portfolio/imagens/<filename>')
     def portfolio_image(filename):
         image = db().execute('SELECT mime_type FROM portfolio_images WHERE filename = ?', (filename,)).fetchone()
