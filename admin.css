@@ -80,6 +80,19 @@ h2 { font: normal 30px/1.2 var(--serif); margin: 0 0 22px; }
 .visit-chip small { display: block; margin-top: 3px; color: var(--muted); }
 .visit-form-section { max-width: 680px; }
 .visit-form { padding: 28px; border: 1px solid var(--line); background: #fffcf7; }
+.dialog-toggle { position: absolute; inline-size: 1px; block-size: 1px; opacity: 0; pointer-events: none; }
+.dialog-open { max-width: 240px; }
+.visit-dialog { display: none; position: fixed; z-index: 10; inset: 0; padding: 24px; background: rgba(48, 41, 34, .58); overflow-y: auto; }
+.dialog-toggle:checked + .dialog-open + .visit-dialog { display: grid; place-items: center; }
+.visit-dialog-card { position: relative; width: min(100%, 680px); max-height: calc(100svh - 48px); overflow-y: auto; padding: 34px; background: var(--paper); box-shadow: 0 18px 60px rgba(48, 41, 34, .25); }
+.dialog-close { position: absolute; top: 14px; right: 18px; color: var(--muted); font-size: 28px; line-height: 1; cursor: pointer; }
+.dialog-close:hover { color: var(--ink); }
+.visit-type { display: flex; gap: 22px; margin: 0 0 24px; padding: 0; border: 0; }
+.visit-type legend { margin-bottom: 10px; font-size: 12px; }
+.visit-type label { display: flex; align-items: center; gap: 7px; cursor: pointer; }
+.visit-type input { width: auto !important; min-height: 0 !important; accent-color: var(--accent); }
+.equipment-field { display: none; margin-top: 2px; }
+.visit-type:has(input[value="ensaio"]:checked) ~ .equipment-field { display: block; }
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
 textarea { width: 100%; padding: 14px 16px; border: 1px solid #b9aa9c; border-radius: 2px; color: var(--ink); background: #fffcf7; font: inherit; resize: vertical; }
 textarea:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -103,4 +116,6 @@ label span { color: var(--muted); }
   .visit-chip small { display: none; }
   .form-row { grid-template-columns: 1fr; gap: 0; }
   .visit-form { padding: 20px; }
+  .visit-dialog { padding: 12px; }
+  .visit-dialog-card { padding: 26px 20px 20px; }
 }

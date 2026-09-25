@@ -59,13 +59,15 @@ class AdminPanelTests(unittest.TestCase):
         self.client.get('/admin/?month=2026-10')
         response = self.client.post('/admin/visitas', data={
             'csrf_token': self.csrf(), 'client': 'Café da praça',
-            'visit_date': '2026-10-17', 'visit_time': '10:30', 'notes': 'Levar fundo claro',
+            'visit_date': '2026-10-17', 'visit_time': '10:30', 'visit_type': 'ensaio',
+            'equipment': 'Canon R10 e flash Godox', 'notes': 'Levar fundo claro',
         })
         self.assertEqual(response.status_code, 302)
         page = self.client.get('/admin/?month=2026-10')
         self.assertIn('Café da praça', page.text)
         self.assertIn('10:30', page.text)
         self.assertIn('Levar fundo claro', page.text)
+        self.assertIn('Canon R10 e flash Godox', page.text)
         self.assertNotIn('10:30', self.client.get('/admin/?month=2026-11').text)
 
     def test_calendar_rejects_invalid_visit(self):
@@ -76,6 +78,20 @@ class AdminPanelTests(unittest.TestCase):
         })
         self.assertEqual(response.status_code, 400)
         self.assertIn('data e um horário válidos', response.text)
+
+    def test_calendar_requires_equipment_for_ensaios_and_five_minute_steps(self):
+        self.client.get('/admin/')
+        missing_equipment = self.client.post('/admin/visitas', data={
+            'csrf_token': self.csrf(), 'client': 'Café da praça',
+            'visit_date': '2026-10-17', 'visit_time': '10:30', 'visit_type': 'ensaio',
+        })
+        self.assertEqual(missing_equipment.status_code, 400)
+        self.assertIn('equipamentos necessários', missing_equipment.text)
+        invalid_minutes = self.client.post('/admin/visitas', data={
+            'csrf_token': self.csrf(), 'client': 'Café da praça',
+            'visit_date': '2026-10-17', 'visit_time': '10:07', 'visit_type': 'reuniao',
+        })
+        self.assertEqual(invalid_minutes.status_code, 400)
 
 
 if __name__ == '__main__':

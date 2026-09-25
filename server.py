@@ -64,10 +64,17 @@ def create_app(test_config=None):
                 visit_time TEXT NOT NULL,
                 client TEXT NOT NULL,
                 notes TEXT NOT NULL DEFAULT '',
+                visit_type TEXT NOT NULL DEFAULT 'reuniao',
+                equipment TEXT NOT NULL DEFAULT '',
                 created_at TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS visits_date_lookup ON visits(visit_date);
         ''')
+        columns = {row[1] for row in db.execute('PRAGMA table_info(visits)').fetchall()}
+        if 'visit_type' not in columns:
+            db.execute("ALTER TABLE visits ADD COLUMN visit_type TEXT NOT NULL DEFAULT 'reuniao'")
+        if 'equipment' not in columns:
+            db.execute("ALTER TABLE visits ADD COLUMN equipment TEXT NOT NULL DEFAULT ''")
     os.chmod(db_path, 0o600)
     def db():
         if 'db' not in g:
@@ -141,7 +148,7 @@ def create_app(test_config=None):
         previous_month = (month_date.replace(day=1) - timedelta(days=1)).replace(day=1)
         next_month = (month_date.replace(day=28) + timedelta(days=4)).replace(day=1)
         rows = db().execute(
-            'SELECT id, visit_date, visit_time, client, notes FROM visits WHERE visit_date LIKE ? ORDER BY visit_date, visit_time, id',
+            'SELECT id, visit_date, visit_time, client, notes, visit_type, equipment FROM visits WHERE visit_date LIKE ? ORDER BY visit_date, visit_time, id',
             (f'{month_key}%',),
         ).fetchall()
         visits_by_date = {}
@@ -171,9 +178,13 @@ def create_app(test_config=None):
         visit_date = request.form.get('visit_date', '').strip()
         visit_time = request.form.get('visit_time', '').strip()
         notes = request.form.get('notes', '').strip()
+        visit_type = request.form.get('visit_type', '').strip().lower()
+        equipment = request.form.get('equipment', '').strip()
         try:
             parsed_date = date.fromisoformat(visit_date)
-            datetime.strptime(visit_time, '%H:%M')
+            parsed_time = datetime.strptime(visit_time, '%H:%M')
+            if parsed_time.minute % 5:
+                raise ValueError
         except ValueError:
             admin = db().execute('SELECT email FROM admin WHERE id = 1').fetchone()
             month_date = date.today().replace(day=1)
@@ -183,13 +194,19 @@ def create_app(test_config=None):
                 except ValueError:
                     pass
             return render_dashboard(admin, month_date, error='Informe uma data e um horário válidos.', status=400)
-        if not client or len(client) > 120 or len(notes) > 500:
+        if visit_type not in {'reuniao', 'ensaio'}:
+            admin = db().execute('SELECT email FROM admin WHERE id = 1').fetchone()
+            return render_dashboard(admin, parsed_date.replace(day=1), error='Escolha se a visita será uma reunião ou um ensaio.', status=400)
+        if visit_type == 'ensaio' and not equipment:
+            admin = db().execute('SELECT email FROM admin WHERE id = 1').fetchone()
+            return render_dashboard(admin, parsed_date.replace(day=1), error='Informe os equipamentos necessários para o ensaio.', status=400)
+        if not client or len(client) > 120 or len(notes) > 500 or len(equipment) > 500:
             admin = db().execute('SELECT email FROM admin WHERE id = 1').fetchone()
             return render_dashboard(admin, parsed_date.replace(day=1), error='Preencha o estabelecimento e mantenha os limites indicados.', status=400)
         with db() as connection:
             connection.execute(
-                'INSERT INTO visits (visit_date, visit_time, client, notes, created_at) VALUES (?, ?, ?, ?, ?)',
-                (visit_date, visit_time, client, notes, datetime.now().isoformat(timespec='seconds')),
+                'INSERT INTO visits (visit_date, visit_time, client, notes, visit_type, equipment, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                (visit_date, visit_time, client, notes, visit_type, equipment, datetime.now().isoformat(timespec='seconds')),
             )
         return redirect(f'/admin/?month={parsed_date.strftime("%Y-%m")}&saved=1')
 

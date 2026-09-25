@@ -19,7 +19,7 @@
       <div class="calendar-weekdays" aria-hidden="true"><span>seg</span><span>ter</span><span>qua</span><span>qui</span><span>sex</span><span>sáb</span><span>dom</span></div>
       <div class="calendar-grid">
         {% for week in weeks %}{% for day in week %}
-          {% if day %}<div class="calendar-day{% if day.date == today %} is-today{% endif %}"><span class="day-number">{{ day.number }}</span>{% for visit in day.visits %}<div class="visit-chip"><strong>{{ visit.visit_time }}</strong> {{ visit.client }}{% if visit.notes %}<small>{{ visit.notes }}</small>{% endif %}</div>{% endfor %}</div>
+          {% if day %}<div class="calendar-day{% if day.date == today %} is-today{% endif %}"><span class="day-number">{{ day.number }}</span>{% for visit in day.visits %}<div class="visit-chip"><strong>{{ visit.visit_time }} · {{ 'Ensaio' if visit.visit_type == 'ensaio' else 'Reunião' }}</strong> {{ visit.client }}{% if visit.equipment %}<small>Levar: {{ visit.equipment }}</small>{% endif %}{% if visit.notes %}<small>{{ visit.notes }}</small>{% endif %}</div>{% endfor %}</div>
           {% else %}<div class="calendar-day is-empty" aria-hidden="true"></div>{% endif %}
         {% endfor %}{% endfor %}
       </div>
@@ -27,13 +27,23 @@
   </section>
   <section class="visit-form-section" aria-labelledby="visit-form-title">
     <p class="eyebrow">NOVA VISITA</p><h2 id="visit-form-title">Adicionar compromisso.</h2>
-    <form class="visit-form" method="post" action="/admin/visitas">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <div class="field"><label for="client">Estabelecimento ou cliente</label><input id="client" name="client" maxlength="120" required placeholder="Ex.: Café da praça"></div>
-      <div class="form-row"><div class="field"><label for="visit_date">Data</label><input id="visit_date" name="visit_date" type="date" required value="{{ today }}"></div><div class="field"><label for="visit_time">Horário</label><input id="visit_time" name="visit_time" type="time" required></div></div>
-      <div class="field"><label for="notes">Observações <span>(opcional)</span></label><textarea id="notes" name="notes" maxlength="500" rows="3" placeholder="Endereço, produtos ou combinado"></textarea></div>
-      <button class="button" type="submit">Salvar visita <span aria-hidden="true">↗</span></button>
-    </form>
+    <input class="dialog-toggle" type="checkbox" id="new-visit-dialog">
+    <label class="button dialog-open" for="new-visit-dialog">Nova visita <span aria-hidden="true">↗</span></label>
+    <div class="visit-dialog" role="dialog" aria-labelledby="dialog-title" aria-modal="true">
+      <div class="visit-dialog-card">
+        <label class="dialog-close" for="new-visit-dialog" aria-label="Fechar">×</label>
+        <p class="eyebrow">NOVA VISITA</p><h2 id="dialog-title">O que vamos fazer?</h2>
+        <form class="visit-form" method="post" action="/admin/visitas">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <fieldset class="visit-type"><legend>Tipo de compromisso</legend><label><input type="radio" name="visit_type" value="reuniao" checked> Reunião</label><label><input type="radio" name="visit_type" value="ensaio"> Ensaio</label></fieldset>
+          <div class="field"><label for="client">Estabelecimento ou cliente</label><input id="client" name="client" maxlength="120" required placeholder="Ex.: Café da praça"></div>
+          <div class="form-row"><div class="field"><label for="visit_date">Data</label><input id="visit_date" name="visit_date" type="date" required value="{{ today }}"></div><div class="field"><label for="visit_time">Horário <span>(intervalos de 5 min)</span></label><input id="visit_time" name="visit_time" type="time" step="300" required></div></div>
+          <div class="field equipment-field"><label for="equipment">Equipamentos para levar <span>(obrigatório em ensaio)</span></label><textarea id="equipment" name="equipment" maxlength="500" rows="2" placeholder="Ex.: Canon R10, flash Godox, tripé"></textarea></div>
+          <div class="field"><label for="notes">Observações <span>(opcional)</span></label><textarea id="notes" name="notes" maxlength="500" rows="3" placeholder="Endereço, produtos ou combinado"></textarea></div>
+          <button class="button" type="submit">Salvar visita <span aria-hidden="true">↗</span></button>
+        </form>
+      </div>
+    </div>
   </section>
   <p class="dashboard-note">Painel local sem autenticação. Os dados ficam armazenados somente neste computador.</p>
 </section>
