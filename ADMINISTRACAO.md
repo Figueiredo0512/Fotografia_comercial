@@ -24,6 +24,10 @@ O servidor estático `python3 -m http.server` não executa autenticação. Para 
 
 O banco local continua em **`.fotografia-admin/`, na pasta acima de `site/`**, fora do repositório e das rotas públicas. Não copie essa pasta para o GitHub.
 
+## Agenda de visitas
+
+No painel, a seção **Agenda de visitas** mostra o mês selecionado e permite avançar ou voltar entre meses. O formulário **Adicionar compromisso** registra estabelecimento, data, horário e observações. Os compromissos ficam na tabela `visits` do banco local e são consultados apenas pelo servidor local.
+
 ## Verificação
 
 ```sh
