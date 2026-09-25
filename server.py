@@ -1,6 +1,7 @@
 """Servidor local: site público e painel administrativo local."""
 import argparse
 import calendar
+from zoneinfo import ZoneInfo
 from datetime import date, datetime, timedelta
 import hmac
 import os
@@ -231,6 +232,10 @@ def create_app(test_config=None):
                 except ValueError:
                     pass
             return render_dashboard(admin, month_date, error=error, status=400, open_dialog=True, selected_type=request.form.get('visit_type', 'reuniao'), equipment_error='equipamentos' in error)
+        today_local = datetime.now(ZoneInfo('America/Sao_Paulo')).date()
+        if (payload['parsed_date'] < today_local
+                and request.form.get('confirm_past_date') != payload['parsed_date'].isoformat()):
+            return render_template('confirm_past_visit.html', visit=payload)
         with db() as connection:
             connection.execute(
                 'INSERT INTO visits (visit_date, visit_time, client, notes, visit_type, equipment, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',

@@ -2,6 +2,8 @@
 import sqlite3
 import tempfile
 import unittest
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from contextlib import closing
 from pathlib import Path
 
@@ -24,6 +26,30 @@ class AdminPanelTests(unittest.TestCase):
     def csrf(self):
         with self.client.session_transaction() as session:
             return session['csrf']
+
+    def test_past_event_requires_confirmation_before_persisting(self):
+        self.client.get('/admin/')
+        past = (datetime.now(ZoneInfo('America/Sao_Paulo')).date() - timedelta(days=1)).isoformat()
+        data = dict(csrf_token=self.csrf(), client='Ensaio anterior', visit_date=past,
+                    visit_time='15:40', visit_type='ensaio', equipment='R10 e Godox', notes='Comentário preservado')
+        response = self.client.post('/admin/visitas', data=data)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('DATA PASSADA', response.text)
+        with self.database() as db:
+            self.assertEqual(db.execute('SELECT count(*) FROM visits').fetchone()[0], 0)
+        self.assertIn('R10 e Godox', response.text)
+        self.assertEqual(self.client.post('/admin/visitas', data={**data, 'confirm_past_date': '2000-01-01'}).status_code, 200)
+        confirmed = self.client.post('/admin/visitas', data={**data, 'confirm_past_date': past})
+        self.assertEqual(confirmed.status_code, 302)
+        with self.database() as db:
+            self.assertEqual(db.execute('SELECT equipment, notes FROM visits').fetchone(), ('R10 e Godox', 'Comentário preservado'))
+
+    def test_today_and_future_do_not_require_confirmation(self):
+        self.client.get('/admin/')
+        today = datetime.now(ZoneInfo('America/Sao_Paulo')).date()
+        for day in [today, today + timedelta(days=1)]:
+            result = self.client.post('/admin/visitas', data=dict(csrf_token=self.csrf(), client='Reunião', visit_date=day.isoformat(), visit_time='00:00', visit_type='reuniao'))
+            self.assertEqual(result.status_code, 302)
 
     def database(self):
         return closing(sqlite3.connect(Path(self.directory.name) / 'admin.sqlite3'))

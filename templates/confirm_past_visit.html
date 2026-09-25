@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+{% block title %}Confirmar data passada{% endblock %}
+{% block content %}
+<section class="auth-card" aria-labelledby="confirmation-title">
+  <p class="eyebrow">DATA PASSADA</p>
+  <h2 id="confirmation-title">Tem certeza que deseja criar este evento?</h2>
+  <p class="message error" role="alert">A data {{ visit.parsed_date.strftime('%d/%m/%Y') }} é anterior ao dia de hoje. O evento ainda não foi salvo.</p>
+  <p class="description"><strong>{{ visit.client }} — {{ visit.visit_time }}</strong><br>{{ 'Ensaio' if visit.visit_type == 'ensaio' else 'Reunião' }}</p>
+  <form method="post" action="/admin/visitas">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% for field in ['client', 'visit_date', 'visit_time', 'visit_type', 'notes', 'equipment'] %}
+    <input type="hidden" name="{{ field }}" value="{{ visit[field] }}">
+    {% endfor %}
+    <button class="button" type="submit" name="confirm_past_date" value="{{ visit.parsed_date.isoformat() }}">Sim, criar evento nesta data</button>
+  </form>
+  <a class="return-link" href="/admin/?month={{ visit.visit_date[:7] }}">Cancelar e voltar ao calendário</a>
+</section>
+{% endblock %}
