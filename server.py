@@ -142,7 +142,7 @@ def create_app(test_config=None):
         message = 'Visita adicionada ao calendário.' if request.args.get('saved') == '1' else None
         return render_dashboard(admin, month_date, message=message)
 
-    def render_dashboard(admin, month_date, message=None, error=None, status=200):
+    def render_dashboard(admin, month_date, message=None, error=None, status=200, open_dialog=False, selected_type='reuniao', equipment_error=False):
         month_key = month_date.strftime('%Y-%m')
         first_weekday, days_in_month = calendar.monthrange(month_date.year, month_date.month)
         previous_month = (month_date.replace(day=1) - timedelta(days=1)).replace(day=1)
@@ -170,6 +170,7 @@ def create_app(test_config=None):
             month_label=f'{month_names[month_date.month - 1]} de {month_date.year}',
             month_key=month_key, previous_month=previous_month.strftime('%Y-%m'), next_month=next_month.strftime('%Y-%m'),
             weeks=weeks, today=date.today().isoformat(), message=message, error=error,
+            open_dialog=open_dialog, selected_type=selected_type, equipment_error=equipment_error,
         ), status
 
     @app.post('/admin/visitas')
@@ -177,6 +178,10 @@ def create_app(test_config=None):
         client = request.form.get('client', '').strip()
         visit_date = request.form.get('visit_date', '').strip()
         visit_time = request.form.get('visit_time', '').strip()
+        visit_hour = request.form.get('visit_hour', '').strip()
+        visit_minute = request.form.get('visit_minute', '').strip()
+        if visit_hour or visit_minute:
+            visit_time = f'{visit_hour}:{visit_minute}'
         notes = request.form.get('notes', '').strip()
         visit_type = request.form.get('visit_type', '').strip().lower()
         equipment = request.form.get('equipment', '').strip()
@@ -196,10 +201,10 @@ def create_app(test_config=None):
             return render_dashboard(admin, month_date, error='Informe uma data e um horário válidos.', status=400)
         if visit_type not in {'reuniao', 'ensaio'}:
             admin = db().execute('SELECT email FROM admin WHERE id = 1').fetchone()
-            return render_dashboard(admin, parsed_date.replace(day=1), error='Escolha se a visita será uma reunião ou um ensaio.', status=400)
+            return render_dashboard(admin, parsed_date.replace(day=1), error='Escolha se a visita será uma reunião ou um ensaio.', status=400, open_dialog=True, selected_type=visit_type)
         if visit_type == 'ensaio' and not equipment:
             admin = db().execute('SELECT email FROM admin WHERE id = 1').fetchone()
-            return render_dashboard(admin, parsed_date.replace(day=1), error='Informe os equipamentos necessários para o ensaio.', status=400)
+            return render_dashboard(admin, parsed_date.replace(day=1), error='Informe os equipamentos necessários para o ensaio.', status=400, open_dialog=True, selected_type='ensaio', equipment_error=True)
         if not client or len(client) > 120 or len(notes) > 500 or len(equipment) > 500:
             admin = db().execute('SELECT email FROM admin WHERE id = 1').fetchone()
             return render_dashboard(admin, parsed_date.replace(day=1), error='Preencha o estabelecimento e mantenha os limites indicados.', status=400)

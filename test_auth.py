@@ -87,11 +87,22 @@ class AdminPanelTests(unittest.TestCase):
         })
         self.assertEqual(missing_equipment.status_code, 400)
         self.assertIn('equipamentos necessários', missing_equipment.text)
+        self.assertIn('id="new-visit-dialog" checked', missing_equipment.text)
+        self.assertIn('field-invalid', missing_equipment.text)
+        self.assertIn('aria-invalid="true"', missing_equipment.text)
         invalid_minutes = self.client.post('/admin/visitas', data={
             'csrf_token': self.csrf(), 'client': 'Café da praça',
             'visit_date': '2026-10-17', 'visit_time': '10:07', 'visit_type': 'reuniao',
         })
         self.assertEqual(invalid_minutes.status_code, 400)
+
+    def test_time_controls_offer_only_five_minute_options(self):
+        page = self.client.get('/admin/').text
+        self.assertIn('name="visit_minute"', page)
+        self.assertIn('value="00"', page)
+        self.assertIn('value="05"', page)
+        self.assertIn('value="55"', page)
+        self.assertNotIn('<option value="07">07</option>', page)
 
 
 if __name__ == '__main__':

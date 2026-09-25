@@ -27,7 +27,7 @@
   </section>
   <section class="visit-form-section" aria-labelledby="visit-form-title">
     <p class="eyebrow">NOVA VISITA</p><h2 id="visit-form-title">Adicionar compromisso.</h2>
-    <input class="dialog-toggle" type="checkbox" id="new-visit-dialog">
+    <input class="dialog-toggle" type="checkbox" id="new-visit-dialog"{% if open_dialog %} checked{% endif %}>
     <label class="button dialog-open" for="new-visit-dialog">Nova visita <span aria-hidden="true">↗</span></label>
     <div class="visit-dialog" role="dialog" aria-labelledby="dialog-title" aria-modal="true">
       <div class="visit-dialog-card">
@@ -35,10 +35,10 @@
         <p class="eyebrow">NOVA VISITA</p><h2 id="dialog-title">O que vamos fazer?</h2>
         <form class="visit-form" method="post" action="/admin/visitas">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <fieldset class="visit-type"><legend>Tipo de compromisso</legend><label><input type="radio" name="visit_type" value="reuniao" checked> Reunião</label><label><input type="radio" name="visit_type" value="ensaio"> Ensaio</label></fieldset>
+          <fieldset class="visit-type"><legend>Tipo de compromisso</legend><label><input type="radio" name="visit_type" value="reuniao"{% if selected_type != 'ensaio' %} checked{% endif %}> Reunião</label><label><input type="radio" name="visit_type" value="ensaio"{% if selected_type == 'ensaio' %} checked{% endif %}> Ensaio</label></fieldset>
           <div class="field"><label for="client">Estabelecimento ou cliente</label><input id="client" name="client" maxlength="120" required placeholder="Ex.: Café da praça"></div>
-          <div class="form-row"><div class="field"><label for="visit_date">Data</label><input id="visit_date" name="visit_date" type="date" required value="{{ today }}"></div><div class="field"><label for="visit_time">Horário <span>(intervalos de 5 min)</span></label><input id="visit_time" name="visit_time" type="time" step="300" required></div></div>
-          <div class="field equipment-field"><label for="equipment">Equipamentos para levar <span>(obrigatório em ensaio)</span></label><textarea id="equipment" name="equipment" maxlength="500" rows="2" placeholder="Ex.: Canon R10, flash Godox, tripé"></textarea></div>
+          <div class="form-row"><div class="field"><label for="visit_date">Data</label><input id="visit_date" name="visit_date" type="date" required value="{{ today }}"></div><div class="field"><label>Horário <span>(minutos de 5 em 5)</span></label><div class="time-selects"><select id="visit_hour" name="visit_hour" required aria-label="Hora">{% for hour in range(24) %}<option value="{{ '%02d'|format(hour) }}">{{ '%02d'|format(hour) }}h</option>{% endfor %}</select><span aria-hidden="true">:</span><select id="visit_minute" name="visit_minute" required aria-label="Minutos">{% for minute in range(0, 60, 5) %}<option value="{{ '%02d'|format(minute) }}">{{ '%02d'|format(minute) }}</option>{% endfor %}</select></div></div></div>
+          <div class="field equipment-field{% if equipment_error %} field-invalid{% endif %}"><label for="equipment">Equipamentos para levar <span>(obrigatório em ensaio)</span></label><textarea id="equipment" name="equipment" maxlength="500" rows="2" placeholder="Ex.: Canon R10, flash Godox, tripé"{% if equipment_error %} aria-invalid="true" aria-describedby="equipment-error"{% endif %}></textarea>{% if equipment_error %}<p id="equipment-error" class="field-error" role="alert">Informe os equipamentos que deverá levar.</p>{% endif %}</div>
           <div class="field"><label for="notes">Observações <span>(opcional)</span></label><textarea id="notes" name="notes" maxlength="500" rows="3" placeholder="Endereço, produtos ou combinado"></textarea></div>
           <button class="button" type="submit">Salvar visita <span aria-hidden="true">↗</span></button>
         </form>
