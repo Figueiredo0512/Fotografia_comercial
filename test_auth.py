@@ -2,6 +2,7 @@
 import sqlite3
 import tempfile
 import unittest
+from io import BytesIO
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from contextlib import closing
@@ -59,6 +60,36 @@ class AdminPanelTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b'admin@example.test', response.data)
         self.assertIn('no-store', response.headers['Cache-Control'])
+
+    def test_portfolio_menu_and_image_upload(self):
+        dashboard = self.client.get('/admin/')
+        self.assertIn('href="/admin/portfolio"', dashboard.text)
+        portfolio = self.client.get('/admin/portfolio')
+        self.assertEqual(portfolio.status_code, 200)
+        response = self.client.post('/admin/portfolio/imagens', data={
+            'csrf_token': self.csrf(), 'title': 'Café especial', 'description': 'Luz lateral',
+            'image': (BytesIO(b'\xff\xd8\xff\xe0' + b'foto-de-teste'), 'cafe.jpg'),
+        }, content_type='multipart/form-data')
+        self.assertEqual(response.status_code, 302)
+        page = self.client.get('/admin/portfolio')
+        self.assertIn('Café especial', page.text)
+        self.assertIn('Luz lateral', page.text)
+        with self.database() as db:
+            filename = db.execute('SELECT filename FROM portfolio_images').fetchone()[0]
+        image = self.client.get(f'/admin/portfolio/imagens/{filename}')
+        self.assertEqual(image.status_code, 200)
+        self.assertEqual(image.mimetype, 'image/jpeg')
+        self.assertTrue(image.data.startswith(b'\xff\xd8\xff'))
+        image.close()
+
+    def test_portfolio_rejects_file_with_fake_image_extension(self):
+        self.client.get('/admin/portfolio')
+        response = self.client.post('/admin/portfolio/imagens', data={
+            'csrf_token': self.csrf(), 'title': 'Arquivo falso',
+            'image': (BytesIO(b'isto nao e uma imagem'), 'falsa.jpg'),
+        }, content_type='multipart/form-data')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('JPEG, PNG ou WebP válida', response.text)
 
     def test_admin_without_trailing_slash_redirects_to_panel(self):
         response = self.client.get('/admin')

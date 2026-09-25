@@ -10,7 +10,7 @@ import secrets
 import sqlite3
 from contextlib import closing
 
-from flask import Flask, abort, g, redirect, render_template, request, session
+from flask import Flask, abort, g, redirect, render_template, request, send_file, session
 
 ROOT = Path(__file__).resolve().parent
 DATA_DIR = ROOT.parent / '.fotografia-admin'
@@ -23,7 +23,7 @@ def create_app(test_config=None):
         DATA_DIR=str(DATA_DIR), SECRET_KEY=None,
         SESSION_COOKIE_NAME='fg_admin', SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE='Strict', SESSION_COOKIE_SECURE=False,
-        MAX_CONTENT_LENGTH=8192, MAX_FORM_PARTS=20,
+        MAX_CONTENT_LENGTH=12 * 1024 * 1024, MAX_FORM_PARTS=20,
         TRUSTED_HOSTS=['localhost', '127.0.0.1'],
     )
     if test_config:
@@ -41,6 +41,9 @@ def create_app(test_config=None):
             pass
         app.config['SECRET_KEY'] = secret_path.read_text().strip()
     db_path = data / 'admin.sqlite3'
+    portfolio_dir = data / 'portfolio'
+    portfolio_dir.mkdir(mode=0o700, exist_ok=True)
+    os.chmod(portfolio_dir, 0o700)
     with closing(sqlite3.connect(db_path)) as db, db:
         db.executescript('''
             CREATE TABLE IF NOT EXISTS admin (
@@ -70,6 +73,14 @@ def create_app(test_config=None):
                 created_at TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS visits_date_lookup ON visits(visit_date);
+            CREATE TABLE IF NOT EXISTS portfolio_images (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                filename TEXT NOT NULL UNIQUE,
+                title TEXT NOT NULL,
+                description TEXT NOT NULL DEFAULT '',
+                mime_type TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
         ''')
         columns = {row[1] for row in db.execute('PRAGMA table_info(visits)').fetchall()}
         if 'visit_type' not in columns:
@@ -157,6 +168,58 @@ def create_app(test_config=None):
         return render_dashboard(admin, month_date, message=message,
                                 open_dialog=selected_date is not None,
                                 selected_date=selected_date.isoformat() if selected_date else None)
+
+    def portfolio_page(error=None, status=200):
+        images = db().execute(
+            'SELECT id, filename, title, description, created_at FROM portfolio_images ORDER BY id DESC'
+        ).fetchall()
+        message = 'Foto adicionada ao portfólio.' if request.args.get('saved') == '1' else None
+        return render_template('portfolio.html', images=images, message=message, error=error), status
+
+    @app.get('/admin/portfolio')
+    def portfolio():
+        return portfolio_page()
+
+    @app.post('/admin/portfolio/imagens')
+    def add_portfolio_image():
+        upload = request.files.get('image')
+        title = request.form.get('title', '').strip()
+        description = request.form.get('description', '').strip()
+        if not upload or not upload.filename or not title or len(title) > 120 or len(description) > 500:
+            return portfolio_page('Selecione uma foto e preencha o título dentro dos limites indicados.', 400)
+        header = upload.stream.read(16)
+        upload.stream.seek(0)
+        signatures = (
+            (header.startswith(b'\xff\xd8\xff'), '.jpg', 'image/jpeg'),
+            (header.startswith(b'\x89PNG\r\n\x1a\n'), '.png', 'image/png'),
+            (header.startswith(b'RIFF') and header[8:12] == b'WEBP', '.webp', 'image/webp'),
+        )
+        detected = next(((extension, mime) for valid, extension, mime in signatures if valid), None)
+        if not detected:
+            return portfolio_page('O arquivo precisa ser uma imagem JPEG, PNG ou WebP válida.', 400)
+        extension, mime_type = detected
+        filename = f'{secrets.token_hex(16)}{extension}'
+        target = portfolio_dir / filename
+        upload.save(target)
+        os.chmod(target, 0o600)
+        try:
+            with db() as connection:
+                connection.execute(
+                    'INSERT INTO portfolio_images (filename, title, description, mime_type, created_at) VALUES (?, ?, ?, ?, ?)',
+                    (filename, title, description, mime_type, datetime.now().isoformat(timespec='seconds')),
+                )
+        except sqlite3.Error:
+            target.unlink(missing_ok=True)
+            raise
+        return redirect('/admin/portfolio?saved=1')
+
+    @app.get('/admin/portfolio/imagens/<filename>')
+    def portfolio_image(filename):
+        image = db().execute('SELECT mime_type FROM portfolio_images WHERE filename = ?', (filename,)).fetchone()
+        target = portfolio_dir / filename
+        if not image or not target.is_file() or target.parent != portfolio_dir:
+            abort(404)
+        return send_file(target, mimetype=image['mime_type'], conditional=True, max_age=3600)
 
     def render_dashboard(admin, month_date, message=None, error=None, status=200, open_dialog=False, selected_type='reuniao', equipment_error=False, selected_date=None):
         month_key = month_date.strftime('%Y-%m')

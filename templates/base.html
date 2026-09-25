@@ -10,7 +10,11 @@
 <body class="{% block body_class %}auth-page{% endblock %}">
   <header class="admin-header">
     <a class="brand" href="/" aria-label="Voltar ao site"><span class="monogram" aria-hidden="true">fg.</span><span>FOTOGRAFIA<br>GASTRONÔMICA</span></a>
-    <a class="back-link" href="/">Ver site <span aria-hidden="true">↗</span></a>
+    <nav class="admin-nav" aria-label="Menu administrativo">
+      <a href="/admin/">Agenda</a>
+      <a href="/admin/portfolio">Portfólio</a>
+      <a class="back-link" href="/">Ver site <span aria-hidden="true">↗</span></a>
+    </nav>
   </header>
   <main>{% block content %}{% endblock %}</main>
   <footer class="admin-footer"><span>HORTOLÂNDIA, SP</span><span>Um olhar atento a cada detalhe.</span></footer>

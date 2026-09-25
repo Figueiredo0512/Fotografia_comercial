@@ -1,0 +1,26 @@
+{% extends 'base.html' %}
+{% block body_class %}dashboard-page{% endblock %}
+{% block title %}Portfólio{% endblock %}
+{% block content %}
+<section class="portfolio-admin" aria-labelledby="portfolio-title">
+  <p class="eyebrow">PORTFÓLIO</p>
+  <h1 id="portfolio-title">Suas melhores<br><em>imagens.</em></h1>
+  <p class="description">Envie as fotografias que poderão compor o portfólio comercial. Os arquivos ficam armazenados neste computador.</p>
+  {% if message %}<p class="message success" role="status">{{ message }}</p>{% endif %}
+  {% if error %}<p class="message error" role="alert">{{ error }}</p>{% endif %}
+
+  <form class="portfolio-form" method="post" action="/admin/portfolio/imagens" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field"><label for="image">Fotografia <span>(JPEG, PNG ou WebP; até 12 MB)</span></label><input id="image" name="image" type="file" accept="image/jpeg,image/png,image/webp" required></div>
+    <div class="field"><label for="title">Título</label><input id="title" name="title" maxlength="120" required placeholder="Ex.: Café especial e croissant"></div>
+    <div class="field"><label for="description">Descrição <span>(opcional)</span></label><textarea id="description" name="description" maxlength="500" rows="3" placeholder="Prato, proposta ou detalhes da produção"></textarea></div>
+    <button class="button" type="submit">Adicionar ao portfólio <span aria-hidden="true">↗</span></button>
+  </form>
+
+  <section class="portfolio-library" aria-labelledby="library-title">
+    <div class="section-heading"><div><p class="eyebrow">BIBLIOTECA</p><h2 id="library-title">Fotos cadastradas.</h2></div><span class="image-count">{{ images|length }} {{ 'imagem' if images|length == 1 else 'imagens' }}</span></div>
+    {% if images %}<div class="portfolio-grid">{% for image in images %}<article class="portfolio-card"><img src="/admin/portfolio/imagens/{{ image.filename }}" alt="{{ image.title }}" loading="lazy"><div><h3>{{ image.title }}</h3>{% if image.description %}<p>{{ image.description }}</p>{% endif %}</div></article>{% endfor %}</div>
+    {% else %}<p class="empty-state">Nenhuma fotografia cadastrada ainda.</p>{% endif %}
+  </section>
+</section>
+{% endblock %}
