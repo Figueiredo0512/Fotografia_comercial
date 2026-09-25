@@ -19,7 +19,7 @@
 
   <section class="portfolio-library" aria-labelledby="library-title">
     <div class="section-heading"><div><p class="eyebrow">BIBLIOTECA</p><h2 id="library-title">Fotos cadastradas.</h2></div><span class="image-count">{{ images|length }} {{ 'imagem' if images|length == 1 else 'imagens' }}</span></div>
-    {% if images %}<div class="portfolio-grid">{% for image in images %}<article class="portfolio-card"><img src="/admin/portfolio/imagens/{{ image.filename }}" alt="{{ image.title }}" loading="lazy"><div><h3>{{ image.title }}</h3>{% if image.description %}<p>{{ image.description }}</p>{% endif %}<p class="badge">{{ 'Escondida' if image.hidden else 'Visível no site' }}</p><a class="button" href="/admin/portfolio/{{ image.id }}/editar">Editar foto</a></div></article>{% endfor %}</div>
+    {% if images %}<div class="portfolio-grid">{% for image in images %}<article class="portfolio-card"><img src="/admin/portfolio/imagens/{{ image.filename }}" alt="{{ image.title }}" loading="lazy"><div class="portfolio-card-body"><h3>{{ image.title }}</h3><p class="photo-description">{{ image.description or 'Sem descrição.' }}</p><p class="badge photo-status">{{ 'Escondida' if image.hidden else 'Visível no site' }}</p><a class="button" href="/admin/portfolio/{{ image.id }}/editar">Editar foto</a></div></article>{% endfor %}</div>
     {% else %}<p class="empty-state">Nenhuma fotografia cadastrada ainda.</p>{% endif %}
   </section>
 </section>
