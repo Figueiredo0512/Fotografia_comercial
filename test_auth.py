@@ -123,10 +123,27 @@ class AdminPanelTests(unittest.TestCase):
         self.assertIn('Admin Teste', page.text)
         self.assertIn('admin@example.test', page.text)
         self.assertIn('Hortolândia', page.text)
+        self.assertIn('href="/admin/cadastro"', page.text)
         self.assertNotIn('password_hash', page.text)
         self.assertNotIn(self.password, page.text)
         visitor = self.app.test_client()
         self.assertEqual(visitor.get('/admin/usuarios').location, '/admin/login')
+
+    def test_authenticated_admin_can_create_user_and_return_to_list(self):
+        form = self.client.get('/admin/cadastro')
+        self.assertEqual(form.status_code, 200)
+        self.assertIn('Voltar para usuários', form.text)
+        response = self.client.post('/admin/cadastro', data={
+            'csrf_token': self.csrf(), 'first_name': 'Joana', 'last_name': 'Lima',
+            'email': 'joana@example.test', 'email_confirmation': 'joana@example.test',
+            'password': 'senha123', 'password_confirmation': 'senha123', 'city': 'Sumaré',
+        })
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(response.location, '/admin/usuarios?created=1')
+        page = self.client.get(response.location)
+        self.assertIn('Novo usuário criado com sucesso.', page.text)
+        self.assertIn('Joana Lima', page.text)
+        self.assertIn('2 usuários cadastrados', page.text)
 
     def test_portfolio_rejects_file_with_fake_image_extension(self):
         self.client.get('/admin/portfolio')

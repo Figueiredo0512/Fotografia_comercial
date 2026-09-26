@@ -347,8 +347,6 @@ def create_app(test_config=None):
 
     @app.route('/admin/cadastro', methods=['GET', 'POST'])
     def register():
-        if authenticated():
-            return redirect(url_for('dashboard'))
         if request.method == 'GET':
             return registration_page()
         values = {
@@ -380,6 +378,8 @@ def create_app(test_config=None):
                 )
         except sqlite3.IntegrityError:
             return registration_page('Já existe uma conta cadastrada com este e-mail.', 409, values)
+        if g.admin_authenticated:
+            return redirect(url_for('users_admin', created='1'), code=303)
         return redirect(url_for('login', registered='1'), code=303)
 
     @app.route('/admin/esqueci-senha', methods=['GET', 'POST'])
@@ -537,7 +537,8 @@ def create_app(test_config=None):
             '''SELECT first_name, last_name, email, city, created_at
                FROM users ORDER BY first_name COLLATE NOCASE, last_name COLLATE NOCASE, id'''
         ).fetchall()
-        return render_template('users.html', users=users)
+        message = 'Novo usuário criado com sucesso.' if request.args.get('created') == '1' else None
+        return render_template('users.html', users=users, message=message)
 
     @app.post('/admin/sair')
     def logout():

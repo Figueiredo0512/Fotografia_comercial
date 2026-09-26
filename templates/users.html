@@ -5,7 +5,8 @@
 <section class="users-admin" aria-labelledby="users-title">
   <p class="eyebrow">ACESSOS DO PAINEL</p>
   <h1 id="users-title">Usuários<br><em>cadastrados.</em></h1>
-  <p class="description">Consulte quem possui acesso administrativo. Senhas e códigos nunca são exibidos.</p>
+  <div class="users-heading"><p class="description">Consulte quem possui acesso administrativo. Senhas e códigos nunca são exibidos.</p><a class="button new-user-button" href="/admin/cadastro">Novo usuário <span aria-hidden="true">↗</span></a></div>
+  {% if message %}<p class="message success" role="status">{{ message }}</p>{% endif %}
   <p class="image-count">{{ users|length }} {{ 'usuário cadastrado' if users|length == 1 else 'usuários cadastrados' }}</p>
   {% if users %}<div class="users-grid">
     {% for user in users %}<article class="user-card">

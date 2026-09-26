@@ -19,6 +19,6 @@
     </div>
     <button class="button" type="submit">Criar cadastro <span aria-hidden="true">↗</span></button>
   </form>
-  <p class="auth-switch">Já possui cadastro? <a href="/admin/login">Voltar ao login</a></p>
+  {% if admin_authenticated %}<p class="auth-switch"><a href="/admin/usuarios">Voltar para usuários</a></p>{% else %}<p class="auth-switch">Já possui cadastro? <a href="/admin/login">Voltar ao login</a></p>{% endif %}
 </section>
 {% endblock %}
