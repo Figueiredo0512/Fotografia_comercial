@@ -29,6 +29,11 @@ a:focus-visible, button:focus-visible { outline: 3px solid var(--accent); outlin
 main { flex: 1; width: 100%; }
 .auth-page main { display: grid; place-items: center; padding: 60px 24px; }
 .auth-card { width: 100%; max-width: 410px; }
+.register-card { max-width: 760px; }
+.register-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 22px; }
+.register-city { grid-column: 1 / -1; }
+.auth-switch { margin: 22px 0 0; color: var(--muted); text-align: center; font-size: 12px; }
+.auth-switch a { color: var(--ink); text-decoration: underline; text-underline-offset: 4px; }
 .eyebrow { font-size: 10px; font-weight: bold; letter-spacing: 2px; margin: 0 0 24px; }
 h1 { font: normal 64px/1.04 var(--serif); letter-spacing: -2px; margin: 0 0 22px; }
 h1 em { color: var(--accent); font-weight: normal; }
@@ -210,4 +215,6 @@ label span { color: var(--muted); }
   .portfolio-form { padding: 20px; }
   .portfolio-library { margin-top: 40px; }
   .portfolio-grid { grid-template-columns: minmax(0, 1fr); }
+  .register-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .register-city { grid-column: auto; }
 }

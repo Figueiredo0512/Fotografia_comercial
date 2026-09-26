@@ -26,9 +26,14 @@ class AdminPanelTests(unittest.TestCase):
         })
         self.client = self.app.test_client()
         with closing(sqlite3.connect(Path(self.directory.name) / 'admin.sqlite3')) as db, db:
-            db.execute('INSERT INTO admin VALUES (1, ?, ?)', (
-                'admin@example.test', generate_password_hash(self.password, method='scrypt')
-            ))
+            password_hash = generate_password_hash(self.password, method='scrypt')
+            db.execute('INSERT INTO admin VALUES (1, ?, ?)', ('admin@example.test', password_hash))
+            db.execute(
+                '''INSERT INTO users
+                   (first_name, last_name, email, password_hash, city, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?)''',
+                ('Admin', 'Teste', 'admin@example.test', password_hash, 'Hortolândia', '2026-09-25T00:00:00'),
+            )
         self.login_and_verify()
 
     def csrf(self, client=None):
@@ -186,6 +191,47 @@ class AdminPanelTests(unittest.TestCase):
         self.assertEqual(response.status_code, 401)
         self.assertEqual(len(self.mailbox), sent_before)
         self.assertEqual(visitor.get('/admin/').location, '/admin/login')
+
+    def test_user_registration_validates_and_creates_login(self):
+        visitor = self.app.test_client()
+        page = visitor.get('/admin/cadastro')
+        self.assertEqual(page.status_code, 200)
+        for field in ('first_name', 'last_name', 'email', 'email_confirmation', 'password', 'password_confirmation', 'city'):
+            self.assertIn(f'name="{field}"', page.text)
+        data = {
+            'csrf_token': self.csrf(visitor), 'first_name': 'Marina', 'last_name': 'Silva',
+            'email': 'marina@example.test', 'email_confirmation': 'marina@example.test',
+            'password': 'uma-senha-segura-123', 'password_confirmation': 'uma-senha-segura-123',
+            'city': 'Hortolândia',
+        }
+        created = visitor.post('/admin/cadastro', data=data)
+        self.assertEqual(created.status_code, 303)
+        self.assertEqual(created.location, '/admin/login?registered=1')
+        with self.database() as db:
+            user = db.execute('SELECT first_name, last_name, city, password_hash FROM users WHERE email = ?', ('marina@example.test',)).fetchone()
+        self.assertEqual(user[:3], ('Marina', 'Silva', 'Hortolândia'))
+        self.assertNotEqual(user[3], data['password'])
+        login = visitor.post('/admin/login', data={
+            'csrf_token': self.csrf(visitor), 'email': data['email'], 'password': data['password'],
+        })
+        self.assertEqual(login.status_code, 303)
+        self.assertEqual(self.mailbox[-1][0], data['email'])
+
+    def test_registration_rejects_mismatches_and_duplicate_email(self):
+        visitor = self.app.test_client()
+        visitor.get('/admin/cadastro')
+        base = {
+            'csrf_token': self.csrf(visitor), 'first_name': 'Ana', 'last_name': 'Souza',
+            'email': 'ana@example.test', 'email_confirmation': 'outra@example.test',
+            'password': 'uma-senha-segura-123', 'password_confirmation': 'diferente-segura-123',
+            'city': 'Campinas',
+        }
+        self.assertEqual(visitor.post('/admin/cadastro', data=base).status_code, 400)
+        valid = {**base, 'email_confirmation': base['email'], 'password_confirmation': base['password']}
+        self.assertEqual(visitor.post('/admin/cadastro', data=valid).status_code, 303)
+        visitor.get('/admin/cadastro')
+        valid['csrf_token'] = self.csrf(visitor)
+        self.assertEqual(visitor.post('/admin/cadastro', data=valid).status_code, 409)
 
     def test_logout_revokes_session(self):
         response = self.client.post('/admin/sair', data={'csrf_token': self.csrf()})

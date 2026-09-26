@@ -5,6 +5,7 @@
   <p class="eyebrow">ÁREA ADMINISTRATIVA</p>
   <h1 id="login-title">Seu espaço<br>de <em>criação.</em></h1>
   <p class="description">Entre para cuidar da agenda e do portfólio.</p>
+  {% if message %}<p class="message success" role="status">{{ message }}</p>{% endif %}
   {% if error %}<p class="message error" role="alert">{{ error }}</p>{% endif %}
   <form method="post" action="/admin/login">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -12,5 +13,6 @@
     <div class="field"><label for="password">Senha</label><input id="password" name="password" type="password" autocomplete="current-password" maxlength="256" placeholder="Sua senha" required></div>
     <button class="button" type="submit">Entrar <span aria-hidden="true">↗</span></button>
   </form>
+  <p class="auth-switch">Ainda não tem acesso? <a href="/admin/cadastro">Criar cadastro</a></p>
 </section>
 {% endblock %}

@@ -22,7 +22,9 @@ O administrador já foi cadastrado anteriormente. Para trocar a senha, execute `
 
 Para configurar ou atualizar o envio do código, execute `.venv/bin/python server.py configure-email`. No Gmail, use `smtp.gmail.com`, porta `587`, o e-mail do administrador como usuário e remetente, e uma senha de app do Google. A senha normal do Gmail não funciona nesse fluxo. Credenciais são digitadas apenas no Terminal e não devem ser enviadas pela conversa.
 
-O fluxo é: `/admin/login` recebe e-mail e senha; `/admin/verificar` recebe o código de seis dígitos; `/admin/` abre agenda e portfólio após as duas etapas. O código expira em dez minutos e a sessão em uma hora. O botão **Sair** encerra a sessão.
+O fluxo é: `/admin/cadastro` cria um usuário; `/admin/login` recebe e-mail e senha; `/admin/verificar` recebe o código de seis dígitos; `/admin/` abre agenda e portfólio após as duas etapas. O código expira em dez minutos e a sessão em uma hora. O botão **Sair** encerra a sessão.
+
+O cadastro solicita nome, sobrenome, e-mail com confirmação, senha com confirmação e cidade. A senha precisa ter pelo menos 12 caracteres e fica armazenada somente como hash. O e-mail não pode ser repetido. Nesta versão local, qualquer pessoa com acesso ao endereço do servidor pode abrir a página de cadastro; antes de uma hospedagem pública, será necessário restringir novos cadastros por convite ou aprovação administrativa.
 
 ## Dados locais
 
@@ -46,7 +48,7 @@ As cinco fotografias mais recentes aparecem automaticamente no carrossel da pág
 .venv/bin/python -m unittest -v test_auth
 ```
 
-Os testes usam banco temporário e transporte de e-mail simulado. Verificam o login em duas etapas, proteção das rotas administrativas, calendário, portfólio, cabeçalhos de segurança e bloqueio de arquivos privados. Nenhuma mensagem real é enviada pelos testes.
+Os testes usam banco temporário e transporte de e-mail simulado. Verificam cadastro, validação de campos e duplicidade, login em duas etapas, proteção das rotas administrativas, calendário, portfólio, cabeçalhos de segurança e bloqueio de arquivos privados. Nenhuma mensagem real é enviada pelos testes.
 
 ## Hospedagem futura
 
