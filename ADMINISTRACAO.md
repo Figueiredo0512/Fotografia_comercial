@@ -1,6 +1,6 @@
 # Administração local
 
-Branch: `feature/login-admin`. O painel exige e-mail, senha e um código enviado ao e-mail do administrador. Não há contas ou senhas padrão.
+O painel exige e-mail, senha e um código enviado ao e-mail do administrador. Não há contas ou senhas padrão.
 
 ## Iniciar
 
@@ -22,11 +22,11 @@ O administrador já foi cadastrado anteriormente. Para trocar a senha pelo Termi
 
 Para configurar ou atualizar o envio do código, execute `.venv/bin/python server.py configure-email`. No Gmail, use `smtp.gmail.com`, porta `587`, o e-mail do administrador como usuário e remetente, e uma senha de app do Google. A senha normal do Gmail não funciona nesse fluxo. Credenciais são digitadas apenas no Terminal e não devem ser enviadas pela conversa.
 
-O fluxo é: `/admin/cadastro` cria um usuário; `/admin/login` recebe e-mail e senha; `/admin/verificar` recebe o código de seis dígitos; `/admin/` abre agenda e portfólio após as duas etapas. O código expira em dez minutos e a sessão em uma hora. O botão **Sair** encerra a sessão.
+O fluxo é: `/admin/login` recebe e-mail e senha; `/admin/verificar` recebe o código de seis dígitos; `/admin/` abre agenda e portfólio após as duas etapas. Somente um administrador já autenticado pode acessar `/admin/cadastro`, pelo botão **Novo usuário**. O código expira em dez minutos e a sessão em uma hora. O botão **Sair** encerra a sessão.
 
 Não há bloqueio por quantidade de tentativas de e-mail e senha. O código de confirmação continua limitado a cinco tentativas por solicitação e expira em dez minutos.
 
-O cadastro solicita nome, sobrenome, e-mail com confirmação, senha com confirmação e cidade. A senha precisa ter pelo menos 8 caracteres e fica armazenada somente como hash. O e-mail não pode ser repetido. Nesta versão local, qualquer pessoa com acesso ao endereço do servidor pode abrir a página de cadastro; antes de uma hospedagem pública, será necessário restringir novos cadastros por convite ou aprovação administrativa.
+O cadastro solicita nome, sobrenome, e-mail com confirmação, senha com confirmação e cidade. A senha precisa ter pelo menos 8 caracteres e fica armazenada somente como hash. O e-mail não pode ser repetido. Não há cadastro público: GET e POST exigem sessão administrativa validada por código, e POST também exige CSRF. Todas as contas são administrativas, sem níveis de privilégio. O primeiro administrador de uma instalação vazia deve ser criado no Terminal com `.venv/bin/python server.py init-admin --email SEU_EMAIL`, digitando a senha somente no prompt. Contas existentes não são removidas automaticamente; revise a lista de usuários antes de publicar.
 
 O botão **Esqueci minha senha** abre `/admin/esqueci-senha`. O usuário informa o e-mail, recebe um código válido por dez minutos e define uma nova senha em `/admin/redefinir-senha`. A troca encerra as sessões anteriores dessa conta. O envio depende da mesma configuração SMTP usada pelo código de login e aceita até três solicitações por conta em 15 minutos.
 
@@ -58,6 +58,18 @@ Os testes usam banco temporário e transporte de e-mail simulado. Verificam cada
 
 ## Hospedagem futura
 
-Esta execução é local, com Flask sem modo debug. Para hospedar será preciso escolher servidor WSGI, armazenamento persistente, HTTPS, cookies Secure, domínio permitido e configuração de e-mail de produção. As definições atuais de host são restritas a localhost/127.0.0.1. Não expor este servidor local à internet.
+Esta execução é local, com Flask sem modo debug e limitada a localhost/127.0.0.1. O servidor local responde `Server: Fotografia`, sem divulgar versões de Python/Werkzeug. Isso reduz informação exposta, mas não substitui atualizações. Cookies locais continuam sem `Secure` para permitir a prévia HTTP; esse modo não deve ser exposto à internet.
+
+A entrada `wsgi:app` habilita obrigatoriamente o modo de produção. Configure `FG_TRUSTED_HOSTS` com os domínios exatos separados por vírgulas, sem esquema ou caminho. A aplicação recusa inicializar sem essa configuração. Em produção, o cookie usa `Secure`, `HttpOnly`, `SameSite=Strict` e prefixo `__Host-`, e as respostas HTTPS incluem HSTS. Requisições HTTP são recusadas antes do processamento dos formulários. `FG_ENV=production` também ativa essas regras; o comando `serve` recusa funcionar nesse modo.
+
+Na VPS, após configurar domínio, certificado TLS e instalar Gunicorn, a execução será semelhante a:
+
+```sh
+FG_TRUSTED_HOSTS=seu-dominio.com.br .venv/bin/gunicorn --bind 127.0.0.1:8000 --workers 2 --forwarded-allow-ips=127.0.0.1 wsgi:app
+```
+
+O domínio acima é um exemplo, não uma configuração já aplicada. O proxy Nginx deverá terminar HTTPS, redirecionar HTTP para o domínio HTTPS fixo e encaminhar apenas para `127.0.0.1:8000`. No bloco HTTPS, usar `proxy_set_header Host $host`, `proxy_set_header X-Forwarded-Proto $scheme` e `proxy_hide_header Server`; definir `server_tokens off` para não divulgar a versão do Nginx. O Gunicorn reconhece HTTPS somente de proxies autorizados pelo endereço de origem. Não usar `--forwarded-allow-ips='*'`, nem expor a porta 8000 ao público. A aplicação, por si só, não confia em um cabeçalho `X-Forwarded-Proto` enviado pelo visitante.
+
+Certificado, proxy, serviço de inicialização automática, backups e envio real de e-mail ainda precisam ser configurados e verificados na hospedagem escolhida. Os testes locais simulam HTTPS; não confirmam TLS em um servidor público.
 
 As decisões de cookies, CSRF e cabeçalhos seguem a [documentação de segurança do Flask](https://flask.palletsprojects.com/en/stable/web-security/).

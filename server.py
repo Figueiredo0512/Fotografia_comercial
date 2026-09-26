@@ -20,6 +20,7 @@ from email.message import EmailMessage
 
 from flask import Flask, abort, g, redirect, render_template, render_template_string, request, send_file, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
+from werkzeug.serving import WSGIRequestHandler
 
 ROOT = Path(__file__).resolve().parent
 DATA_DIR = ROOT.parent / '.fotografia-admin'
@@ -27,6 +28,11 @@ PUBLIC_FILES = {'styles.css', 'admin.css', 'carousel.js', 'calendar.js'}
 CODE_LIFETIME = 600
 SESSION_LIFETIME = 3600
 MAX_ATTEMPTS = 5
+
+
+class LocalRequestHandler(WSGIRequestHandler):
+    def version_string(self):
+        return 'Fotografia'
 
 
 def private_write(path, text):
@@ -49,9 +55,19 @@ def create_app(test_config=None):
         MAX_CONTENT_LENGTH=12 * 1024 * 1024, MAX_FORM_PARTS=20,
         TRUSTED_HOSTS=['localhost', '127.0.0.1'],
         SMTP=None, SEND_CODE=None, NOW=time.time,
+        PRODUCTION=os.environ.get('FG_ENV', 'local') == 'production',
     )
     if test_config:
         app.config.update(test_config)
+    if app.config['PRODUCTION']:
+        hosts = [host.strip() for host in os.environ.get('FG_TRUSTED_HOSTS', '').split(',') if host.strip()]
+        if test_config and 'TRUSTED_HOSTS' in test_config:
+            hosts = test_config['TRUSTED_HOSTS']
+        if not hosts or any(not re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9.-]*', host) for host in hosts):
+            raise ValueError('Produção exige FG_TRUSTED_HOSTS com os domínios permitidos, separados por vírgula.')
+        app.config.update(TRUSTED_HOSTS=hosts, SESSION_COOKIE_SECURE=True,
+                          SESSION_COOKIE_NAME='__Host-fg_admin', SESSION_COOKIE_DOMAIN=None,
+                          SESSION_COOKIE_PATH='/', PREFERRED_URL_SCHEME='https', DEBUG=False)
     data = Path(app.config['DATA_DIR'])
     data.mkdir(mode=0o700, parents=True, exist_ok=True)
     os.chmod(data, 0o700)
@@ -187,10 +203,14 @@ def create_app(test_config=None):
 
     @app.before_request
     def protect_requests():
+        if request.routing_exception is not None:
+            raise request.routing_exception
+        if app.config['PRODUCTION'] and not request.is_secure:
+            abort(400, description='HTTPS obrigatório.')
         if request.path.startswith('/admin'):
             g.admin_authenticated = authenticated()
             public_endpoints = {
-                'asset', 'login', 'register', 'verify', 'resend',
+                'asset', 'login', 'verify', 'resend',
                 'forgot_password', 'reset_password',
             }
             if request.endpoint not in public_endpoints and not g.admin_authenticated:
@@ -206,6 +226,8 @@ def create_app(test_config=None):
 
     @app.after_request
     def headers(response):
+        if app.config['PRODUCTION'] and request.is_secure:
+            response.headers['Strict-Transport-Security'] = 'max-age=31536000'
         response.headers['X-Content-Type-Options'] = 'nosniff'
         response.headers['X-Frame-Options'] = 'DENY'
         response.headers['Referrer-Policy'] = 'same-origin'
@@ -378,9 +400,7 @@ def create_app(test_config=None):
                 )
         except sqlite3.IntegrityError:
             return registration_page('Já existe uma conta cadastrada com este e-mail.', 409, values)
-        if g.admin_authenticated:
-            return redirect(url_for('users_admin', created='1'), code=303)
-        return redirect(url_for('login', registered='1'), code=303)
+        return redirect(url_for('users_admin', created='1'), code=303)
 
     @app.route('/admin/esqueci-senha', methods=['GET', 'POST'])
     def forgot_password():
@@ -442,7 +462,7 @@ def create_app(test_config=None):
             connection.execute('UPDATE users SET password_hash = ? WHERE email = ?', (password_hash, row['email']))
             connection.execute('UPDATE admin SET password_hash = ? WHERE email = ?', (password_hash, row['email']))
             connection.execute('DELETE FROM sessions WHERE email = ?', (row['email'],))
-            connection.execute('DELETE FROM challenges WHERE id = ?', (challenge_id,))
+            connection.execute('DELETE FROM challenges WHERE email = ?', (row['email'],))
         session.clear()
         csrf()
         return redirect(url_for('login', reset='1'), code=303)
@@ -454,7 +474,7 @@ def create_app(test_config=None):
         status = 200
         with db() as connection:
             connection.execute('BEGIN IMMEDIATE')
-            row = connection.execute('SELECT * FROM challenges WHERE id = ?', (challenge_id,)).fetchone()
+            row = connection.execute("SELECT * FROM challenges WHERE id = ? AND purpose = 'login'", (challenge_id,)).fetchone()
             if not row or row['expires'] <= now() or row['attempts'] >= MAX_ATTEMPTS:
                 session.pop('pending', None)
                 return login_page('O código expirou ou atingiu o limite de tentativas. Entre novamente.', 401)
@@ -487,7 +507,7 @@ def create_app(test_config=None):
         challenge_id = session.get('pending', '')
         with db() as connection:
             connection.execute('BEGIN IMMEDIATE')
-            row = connection.execute('SELECT * FROM challenges WHERE id = ?', (challenge_id,)).fetchone()
+            row = connection.execute("SELECT * FROM challenges WHERE id = ? AND purpose = 'login'", (challenge_id,)).fetchone()
             if not row or row['expires'] <= now() or row['attempts'] >= MAX_ATTEMPTS:
                 session.pop('pending', None)
                 return login_page('O código expirou. Entre novamente.', 401)
@@ -838,7 +858,9 @@ def main():
     app = create_app()
     database = Path(app.config['DATA_DIR']) / 'admin.sqlite3'
     if args.command == 'serve':
-        app.run(host='127.0.0.1', port=args.port, debug=False)
+        if app.config['PRODUCTION']:
+            parser.error('Use um servidor WSGI de produção; serve é somente para prévia local.')
+        app.run(host='127.0.0.1', port=args.port, debug=False, request_handler=LocalRequestHandler)
     elif args.command in ('init-admin', 'reset-password'):
         with closing(sqlite3.connect(database)) as connection, connection:
             existing = connection.execute('SELECT email FROM admin WHERE id = 1').fetchone()

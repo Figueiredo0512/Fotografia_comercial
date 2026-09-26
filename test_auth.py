@@ -3,6 +3,7 @@ import sqlite3
 import smtplib
 import tempfile
 import unittest
+from unittest.mock import patch
 from io import BytesIO
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -270,7 +271,7 @@ class AdminPanelTests(unittest.TestCase):
         self.assertNotIn('credentials rejected', response.text)
 
     def test_user_registration_validates_and_creates_login(self):
-        visitor = self.app.test_client()
+        visitor = self.client
         page = visitor.get('/admin/cadastro')
         self.assertEqual(page.status_code, 200)
         for field in ('first_name', 'last_name', 'email', 'email_confirmation', 'password', 'password_confirmation', 'city'):
@@ -283,19 +284,27 @@ class AdminPanelTests(unittest.TestCase):
         }
         created = visitor.post('/admin/cadastro', data=data)
         self.assertEqual(created.status_code, 303)
-        self.assertEqual(created.location, '/admin/login?registered=1')
+        self.assertEqual(created.location, '/admin/usuarios?created=1')
         with self.database() as db:
             user = db.execute('SELECT first_name, last_name, city, password_hash FROM users WHERE email = ?', ('marina@example.test',)).fetchone()
         self.assertEqual(user[:3], ('Marina', 'Silva', 'Hortolândia'))
         self.assertNotEqual(user[3], data['password'])
+        visitor = self.app.test_client()
+        visitor.get('/admin/login')
         login = visitor.post('/admin/login', data={
             'csrf_token': self.csrf(visitor), 'email': data['email'], 'password': data['password'],
         })
         self.assertEqual(login.status_code, 303)
         self.assertEqual(self.mailbox[-1][0], data['email'])
+        self.assertEqual(visitor.get('/admin/').status_code, 302)
+        verified = visitor.post('/admin/verificar', data={
+            'csrf_token': self.csrf(visitor), 'code': self.mailbox[-1][1],
+        })
+        self.assertEqual(verified.status_code, 303)
+        self.assertEqual(visitor.get('/admin/').status_code, 200)
 
     def test_registration_rejects_mismatches_and_duplicate_email(self):
-        visitor = self.app.test_client()
+        visitor = self.client
         visitor.get('/admin/cadastro')
         base = {
             'csrf_token': self.csrf(visitor), 'first_name': 'Ana', 'last_name': 'Souza',
@@ -309,6 +318,55 @@ class AdminPanelTests(unittest.TestCase):
         visitor.get('/admin/cadastro')
         valid['csrf_token'] = self.csrf(visitor)
         self.assertEqual(visitor.post('/admin/cadastro', data=valid).status_code, 409)
+
+    def test_registration_requires_completed_login_and_csrf(self):
+        visitor = self.app.test_client()
+        login = visitor.get('/admin/login')
+        self.assertNotIn('href="/admin/cadastro"', login.text)
+        data = dict(csrf_token=self.csrf(visitor), first_name='Intruso', last_name='Teste',
+                    email='intruso@example.test', email_confirmation='intruso@example.test',
+                    password='senha123', password_confirmation='senha123', city='Teste')
+        for method in (visitor.get, visitor.post):
+            response = method('/admin/cadastro', **({'data': data} if method == visitor.post else {}))
+            self.assertEqual(response.status_code, 302)
+            self.assertEqual(response.location, '/admin/login')
+        visitor.post('/admin/login', data={'csrf_token': self.csrf(visitor),
+                     'email': 'admin@example.test', 'password': self.password})
+        data['csrf_token'] = self.csrf(visitor)
+        self.assertEqual(visitor.post('/admin/cadastro', data=data).status_code, 302)
+        self.assertEqual(self.client.post('/admin/cadastro', data={**data, 'csrf_token': 'invalid'}).status_code, 400)
+        with self.database() as db:
+            self.assertEqual(db.execute('SELECT count(*) FROM users').fetchone()[0], 1)
+
+    def test_production_enforces_https_hosts_and_secure_cookies(self):
+        production = create_app({'TESTING': True, 'SECRET_KEY': 'test-only',
+                                 'DATA_DIR': self.directory.name, 'PRODUCTION': True,
+                                 'TRUSTED_HOSTS': ['foto.example.test']})
+        client = production.test_client()
+        self.assertEqual(client.get('/admin/login', base_url='http://foto.example.test').status_code, 400)
+        self.assertEqual(client.get('/admin/login', base_url='http://foto.example.test',
+                                   headers={'X-Forwarded-Proto': 'https'}).status_code, 400)
+        self.assertEqual(client.get('/admin/login', base_url='https://evil.example.test').status_code, 400)
+        response = client.get('/admin/login', base_url='https://foto.example.test')
+        self.assertEqual(response.status_code, 200)
+        cookie = response.headers['Set-Cookie']
+        for flag in ('__Host-fg_admin=', 'Secure', 'HttpOnly', 'SameSite=Strict', 'Path=/'):
+            self.assertIn(flag, cookie)
+        self.assertNotIn('Domain=', cookie)
+        self.assertEqual(response.headers['Strict-Transport-Security'], 'max-age=31536000')
+        with patch.dict('os.environ', {'FG_TRUSTED_HOSTS': ''}):
+            with self.assertRaises(ValueError):
+                create_app({'PRODUCTION': True, 'DATA_DIR': self.directory.name})
+
+    def test_reset_code_cannot_be_used_as_login_code(self):
+        visitor = self.app.test_client()
+        visitor.get('/admin/esqueci-senha')
+        visitor.post('/admin/esqueci-senha', data={'csrf_token': self.csrf(visitor), 'email': 'admin@example.test'})
+        with visitor.session_transaction() as session:
+            session['pending'] = session['pending_reset']
+        response = visitor.post('/admin/verificar', data={'csrf_token': self.csrf(visitor), 'code': self.mailbox[-1][1]})
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(visitor.get('/admin/').status_code, 302)
 
     def test_forgot_password_resets_password_and_allows_login(self):
         visitor = self.app.test_client()

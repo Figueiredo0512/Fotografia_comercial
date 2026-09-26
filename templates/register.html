@@ -4,7 +4,7 @@
 <section class="auth-card register-card" aria-labelledby="register-title">
   <p class="eyebrow">NOVO USUÁRIO</p>
   <h1 id="register-title">Crie seu<br><em>acesso.</em></h1>
-  <p class="description">Preencha seus dados para acessar a área administrativa.</p>
+  <p class="description">Cadastre apenas pessoas autorizadas: esta conta terá acesso completo à administração do site.</p>
   {% if error %}<p class="message error" role="alert">{{ error }}</p>{% endif %}
   <form method="post" action="/admin/cadastro">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
