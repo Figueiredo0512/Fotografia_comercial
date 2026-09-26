@@ -1,5 +1,6 @@
 """Testes do painel protegido; o envio de e-mail é sempre simulado."""
 import sqlite3
+import smtplib
 import tempfile
 import unittest
 from io import BytesIO
@@ -192,6 +193,19 @@ class AdminPanelTests(unittest.TestCase):
         self.assertEqual(response.status_code, 401)
         self.assertEqual(len(self.mailbox), sent_before)
         self.assertEqual(visitor.get('/admin/').location, '/admin/login')
+
+    def test_gmail_authentication_failure_explains_app_password(self):
+        visitor = self.app.test_client()
+        visitor.get('/admin/login')
+        self.app.config['SEND_CODE'] = lambda _email, _code: (_ for _ in ()).throw(
+            smtplib.SMTPAuthenticationError(535, b'credentials rejected')
+        )
+        response = visitor.post('/admin/login', data={
+            'csrf_token': self.csrf(visitor), 'email': 'admin@example.test', 'password': self.password,
+        })
+        self.assertEqual(response.status_code, 503)
+        self.assertIn('senha de app do Google', response.text)
+        self.assertNotIn('credentials rejected', response.text)
 
     def test_user_registration_validates_and_creates_login(self):
         visitor = self.app.test_client()

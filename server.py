@@ -279,6 +279,14 @@ def create_app(test_config=None):
                 smtp.login(config['username'], smtp_password)
                 smtp.send_message(message)
 
+    def email_delivery_error(error):
+        if isinstance(error, smtplib.SMTPAuthenticationError):
+            return ('O Gmail recusou a credencial de envio. Configure uma senha de app do Google; '
+                    'a senha normal da conta não funciona.')
+        if isinstance(error, (json.JSONDecodeError, RuntimeError, ValueError)):
+            return 'A configuração de e-mail está incompleta ou inválida. Configure o envio novamente.'
+        return 'Não foi possível conectar ao serviço de e-mail. Tente novamente em alguns minutos.'
+
     def login_page(error=None, status=200, email='', message=None):
         return render_template('login.html', error=error, email=email, message=message), status
 
@@ -343,9 +351,9 @@ def create_app(test_config=None):
                     (challenge, code_digest(challenge, code), now() + CODE_LIFETIME, now(), user['email']),
                 )
                 send_code(user['email'], code)
-        except (smtplib.SMTPException, OSError, RuntimeError, ValueError, json.JSONDecodeError):
-            app.logger.warning('Não foi possível enviar o código de acesso. Confira a configuração SMTP.')
-            return login_page('Não foi possível enviar o código. Verifique a configuração de e-mail do administrador.', 503, email)
+        except (smtplib.SMTPException, OSError, RuntimeError, ValueError, json.JSONDecodeError) as error:
+            app.logger.warning('Falha no envio do código de acesso: %s.', type(error).__name__)
+            return login_page(email_delivery_error(error), 503, email)
         session.clear()
         session['pending'] = challenge
         csrf()
@@ -415,9 +423,9 @@ def create_app(test_config=None):
                     (challenge, code_digest(challenge, code), now() + CODE_LIFETIME, now(), user['email']),
                 )
                 send_code(user['email'], code, purpose='reset')
-        except (smtplib.SMTPException, OSError, RuntimeError, ValueError, json.JSONDecodeError):
-            app.logger.warning('Não foi possível enviar o código de redefinição de senha.')
-            return forgot_password_page('Não foi possível enviar o código. Verifique a configuração de e-mail.', 503, email)
+        except (smtplib.SMTPException, OSError, RuntimeError, ValueError, json.JSONDecodeError) as error:
+            app.logger.warning('Falha no envio do código de redefinição: %s.', type(error).__name__)
+            return forgot_password_page(email_delivery_error(error), 503, email)
         session.clear()
         session['pending_reset'] = challenge
         csrf()
@@ -502,8 +510,8 @@ def create_app(test_config=None):
             code = f'{secrets.randbelow(1000000):06d}'
             try:
                 send_code(row['email'], code)
-            except (smtplib.SMTPException, OSError, RuntimeError, ValueError, json.JSONDecodeError):
-                return render_template('verify.html', email=row['email'], error='Não foi possível reenviar. O código anterior continua válido até expirar.'), 503
+            except (smtplib.SMTPException, OSError, RuntimeError, ValueError, json.JSONDecodeError) as error:
+                return render_template('verify.html', email=row['email'], error=email_delivery_error(error)), 503
             connection.execute(
                 'UPDATE challenges SET code_hash = ?, last_send = ?, sends = sends + 1 WHERE id = ?',
                 (code_digest(challenge_id, code), now(), challenge_id),
