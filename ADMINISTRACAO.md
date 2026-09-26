@@ -24,6 +24,8 @@ Para configurar ou atualizar o envio do código, execute `.venv/bin/python serve
 
 O fluxo é: `/admin/cadastro` cria um usuário; `/admin/login` recebe e-mail e senha; `/admin/verificar` recebe o código de seis dígitos; `/admin/` abre agenda e portfólio após as duas etapas. O código expira em dez minutos e a sessão em uma hora. O botão **Sair** encerra a sessão.
 
+Não há bloqueio por quantidade de tentativas de e-mail e senha. O código de confirmação continua limitado a cinco tentativas por solicitação e expira em dez minutos.
+
 O cadastro solicita nome, sobrenome, e-mail com confirmação, senha com confirmação e cidade. A senha precisa ter pelo menos 8 caracteres e fica armazenada somente como hash. O e-mail não pode ser repetido. Nesta versão local, qualquer pessoa com acesso ao endereço do servidor pode abrir a página de cadastro; antes de uma hospedagem pública, será necessário restringir novos cadastros por convite ou aprovação administrativa.
 
 O botão **Esqueci minha senha** abre `/admin/esqueci-senha`. O usuário informa o e-mail, recebe um código válido por dez minutos e define uma nova senha em `/admin/redefinir-senha`. A troca encerra as sessões anteriores dessa conta. O envio depende da mesma configuração SMTP usada pelo código de login e aceita até três solicitações por conta em 15 minutos.

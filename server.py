@@ -218,20 +218,6 @@ def create_app(test_config=None):
             response.headers['X-Robots-Tag'] = 'noindex, nofollow'
         return response
 
-    def login_limit(email):
-        buckets = [(f'ip:{request.remote_addr}', 10), (f'email:{digest(email)}', 5)]
-        with db() as connection:
-            connection.execute('BEGIN IMMEDIATE')
-            connection.execute('DELETE FROM attempts WHERE at < ?', (now() - 900,))
-            connection.execute('DELETE FROM challenges WHERE expires < ?', (now(),))
-            connection.execute('DELETE FROM sessions WHERE expires < ?', (now(),))
-            for bucket, limit in buckets:
-                if connection.execute('SELECT count(*) FROM attempts WHERE bucket = ?', (bucket,)).fetchone()[0] >= limit:
-                    return False
-            for bucket, _limit in buckets:
-                connection.execute('INSERT INTO attempts VALUES (?, ?)', (bucket, now()))
-        return True
-
     def password_reset_limit(email):
         bucket = f'reset:{digest(email)}'
         with db() as connection:
@@ -334,8 +320,8 @@ def create_app(test_config=None):
             return login_page(message=message)
         email = request.form.get('email', '').strip().lower()
         password = request.form.get('password', '')
-        if len(email) > 254 or len(password) > 256 or not login_limit(email):
-            return login_page('E-mail ou senha incorretos, ou muitas tentativas seguidas.', 401, email)
+        if len(email) > 254 or len(password) > 256:
+            return login_page('E-mail ou senha incorretos.', 401, email)
         user = db().execute('SELECT * FROM users WHERE email = ?', (email,)).fetchone()
         correct = check_password_hash(user['password_hash'] if user else dummy_hash, password)
         if not user or not correct:

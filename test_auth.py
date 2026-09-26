@@ -207,6 +207,21 @@ class AdminPanelTests(unittest.TestCase):
         self.assertEqual(len(self.mailbox), sent_before)
         self.assertEqual(visitor.get('/admin/').location, '/admin/login')
 
+    def test_login_does_not_block_after_repeated_wrong_passwords(self):
+        visitor = self.app.test_client()
+        visitor.get('/admin/login')
+        for _ in range(6):
+            response = visitor.post('/admin/login', data={
+                'csrf_token': self.csrf(visitor), 'email': 'admin@example.test', 'password': 'senha-incorreta',
+            })
+            self.assertEqual(response.status_code, 401)
+            self.assertNotIn('Muitas tentativas', response.text)
+        correct = visitor.post('/admin/login', data={
+            'csrf_token': self.csrf(visitor), 'email': 'admin@example.test', 'password': self.password,
+        })
+        self.assertEqual(correct.status_code, 303)
+        self.assertEqual(correct.location, '/admin/verificar')
+
     def test_gmail_authentication_failure_explains_app_password(self):
         visitor = self.app.test_client()
         visitor.get('/admin/login')
