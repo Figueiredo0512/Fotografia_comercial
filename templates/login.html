@@ -11,6 +11,7 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="field"><label for="email">E-mail</label><input id="email" name="email" type="email" autocomplete="username" maxlength="254" value="{{ email }}" placeholder="Seu e-mail de administrador" required></div>
     <div class="field"><label for="password">Senha</label><input id="password" name="password" type="password" autocomplete="current-password" maxlength="256" placeholder="Sua senha" required></div>
+    <a class="forgot-link" href="/admin/esqueci-senha">Esqueci minha senha</a>
     <button class="button" type="submit">Entrar <span aria-hidden="true">↗</span></button>
   </form>
   <p class="auth-switch">Ainda não tem acesso? <a href="/admin/cadastro">Criar cadastro</a></p>

@@ -177,6 +177,7 @@ class AdminPanelTests(unittest.TestCase):
         self.assertIn('type="email"', page)
         self.assertIn('type="password"', page)
         self.assertNotIn('href="/admin/portfolio"', page)
+        self.assertIn('href="/admin/esqueci-senha"', page)
         stylesheet = visitor.get('/admin.css')
         self.assertEqual(stylesheet.status_code, 200)
         self.assertEqual(stylesheet.mimetype, 'text/css')
@@ -201,7 +202,7 @@ class AdminPanelTests(unittest.TestCase):
         data = {
             'csrf_token': self.csrf(visitor), 'first_name': 'Marina', 'last_name': 'Silva',
             'email': 'marina@example.test', 'email_confirmation': 'marina@example.test',
-            'password': 'uma-senha-segura-123', 'password_confirmation': 'uma-senha-segura-123',
+            'password': 'senha123', 'password_confirmation': 'senha123',
             'city': 'Hortolândia',
         }
         created = visitor.post('/admin/cadastro', data=data)
@@ -232,6 +233,50 @@ class AdminPanelTests(unittest.TestCase):
         visitor.get('/admin/cadastro')
         valid['csrf_token'] = self.csrf(visitor)
         self.assertEqual(visitor.post('/admin/cadastro', data=valid).status_code, 409)
+
+    def test_forgot_password_resets_password_and_allows_login(self):
+        visitor = self.app.test_client()
+        page = visitor.get('/admin/esqueci-senha')
+        self.assertEqual(page.status_code, 200)
+        requested = visitor.post('/admin/esqueci-senha', data={
+            'csrf_token': self.csrf(visitor), 'email': 'admin@example.test',
+        })
+        self.assertEqual(requested.status_code, 303)
+        self.assertEqual(requested.location, '/admin/redefinir-senha')
+        reset_code = self.mailbox[-1][1]
+        reset = visitor.post('/admin/redefinir-senha', data={
+            'csrf_token': self.csrf(visitor), 'code': reset_code,
+            'password': 'nova1234', 'password_confirmation': 'nova1234',
+        })
+        self.assertEqual(reset.status_code, 303)
+        self.assertEqual(reset.location, '/admin/login?reset=1')
+        visitor.get('/admin/login')
+        old_password = visitor.post('/admin/login', data={
+            'csrf_token': self.csrf(visitor), 'email': 'admin@example.test', 'password': self.password,
+        })
+        self.assertEqual(old_password.status_code, 401)
+        new_password = visitor.post('/admin/login', data={
+            'csrf_token': self.csrf(visitor), 'email': 'admin@example.test', 'password': 'nova1234',
+        })
+        self.assertEqual(new_password.status_code, 303)
+
+    def test_forgot_password_rejects_wrong_code_and_short_password(self):
+        visitor = self.app.test_client()
+        visitor.get('/admin/esqueci-senha')
+        visitor.post('/admin/esqueci-senha', data={
+            'csrf_token': self.csrf(visitor), 'email': 'admin@example.test',
+        })
+        wrong_code = '000000' if self.mailbox[-1][1] != '000000' else '111111'
+        wrong = visitor.post('/admin/redefinir-senha', data={
+            'csrf_token': self.csrf(visitor), 'code': wrong_code,
+            'password': 'nova1234', 'password_confirmation': 'nova1234',
+        })
+        self.assertEqual(wrong.status_code, 401)
+        short = visitor.post('/admin/redefinir-senha', data={
+            'csrf_token': self.csrf(visitor), 'code': self.mailbox[-1][1],
+            'password': 'curta', 'password_confirmation': 'curta',
+        })
+        self.assertEqual(short.status_code, 400)
 
     def test_logout_revokes_session(self):
         response = self.client.post('/admin/sair', data={'csrf_token': self.csrf()})

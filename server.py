@@ -121,6 +121,8 @@ def create_app(test_config=None):
         session_columns = {row[1] for row in db.execute('PRAGMA table_info(sessions)')}
         if 'email' not in challenge_columns:
             db.execute("ALTER TABLE challenges ADD COLUMN email TEXT NOT NULL DEFAULT ''")
+        if 'purpose' not in challenge_columns:
+            db.execute("ALTER TABLE challenges ADD COLUMN purpose TEXT NOT NULL DEFAULT 'login'")
         if 'email' not in session_columns:
             db.execute("ALTER TABLE sessions ADD COLUMN email TEXT NOT NULL DEFAULT ''")
         if 'hidden' not in photo_columns:
@@ -187,7 +189,10 @@ def create_app(test_config=None):
     def protect_requests():
         if request.path.startswith('/admin'):
             g.admin_authenticated = authenticated()
-            public_endpoints = {'asset', 'login', 'register', 'verify', 'resend'}
+            public_endpoints = {
+                'asset', 'login', 'register', 'verify', 'resend',
+                'forgot_password', 'reset_password',
+            }
             if request.endpoint not in public_endpoints and not g.admin_authenticated:
                 return redirect(url_for('login'))
         if request.method == 'POST':
@@ -227,7 +232,18 @@ def create_app(test_config=None):
                 connection.execute('INSERT INTO attempts VALUES (?, ?)', (bucket, now()))
         return True
 
-    def send_code(email, code):
+    def password_reset_limit(email):
+        bucket = f'reset:{digest(email)}'
+        with db() as connection:
+            connection.execute('BEGIN IMMEDIATE')
+            connection.execute('DELETE FROM attempts WHERE at < ?', (now() - 900,))
+            count = connection.execute('SELECT count(*) FROM attempts WHERE bucket = ?', (bucket,)).fetchone()[0]
+            if count >= 3:
+                return False
+            connection.execute('INSERT INTO attempts VALUES (?, ?)', (bucket, now()))
+        return True
+
+    def send_code(email, code, purpose='login'):
         if app.testing and app.config['SEND_CODE']:
             app.config['SEND_CODE'](email, code)
             return
@@ -240,9 +256,10 @@ def create_app(test_config=None):
         message = EmailMessage()
         message['From'] = config['sender']
         message['To'] = email
-        message['Subject'] = 'Seu código de acesso — Fotografia gastronômica'
+        action = 'redefinição de senha' if purpose == 'reset' else 'acesso'
+        message['Subject'] = f'Seu código de {action} — Fotografia gastronômica'
         message.set_content(
-            f'Seu código de acesso é: {code}\n\n'
+            f'Seu código de {action} é: {code}\n\n'
             'Ele expira em até 10 minutos e só pode ser usado uma vez.\n'
             'Se você não solicitou este acesso, ignore esta mensagem.\n'
         )
@@ -267,6 +284,12 @@ def create_app(test_config=None):
 
     def registration_page(error=None, status=200, values=None):
         return render_template('register.html', error=error, values=values or {}), status
+
+    def forgot_password_page(error=None, status=200, email=''):
+        return render_template('forgot_password.html', error=error, email=email), status
+
+    def reset_password_page(error=None, status=200):
+        return render_template('reset_password.html', error=error), status
 
     @app.get('/')
     @app.get('/index.html')
@@ -295,7 +318,11 @@ def create_app(test_config=None):
         if authenticated():
             return redirect(url_for('dashboard'))
         if request.method == 'GET':
-            message = 'Cadastro concluído. Entre para receber seu código de acesso.' if request.args.get('registered') == '1' else None
+            message = None
+            if request.args.get('registered') == '1':
+                message = 'Cadastro concluído. Entre para receber seu código de acesso.'
+            elif request.args.get('reset') == '1':
+                message = 'Senha redefinida. Entre com a nova senha.'
             return login_page(message=message)
         email = request.form.get('email', '').strip().lower()
         password = request.form.get('password', '')
@@ -345,8 +372,8 @@ def create_app(test_config=None):
             return registration_page('Nome, sobrenome e cidade devem ter até 100 caracteres.', 400, values)
         if not valid_email(values['email']) or values['email'] != values['email_confirmation']:
             return registration_page('Os e-mails informados precisam ser válidos e iguais.', 400, values)
-        if not 12 <= len(password) <= 256 or password != password_confirmation:
-            return registration_page('As senhas precisam ser iguais e ter pelo menos 12 caracteres.', 400, values)
+        if not 8 <= len(password) <= 256 or password != password_confirmation:
+            return registration_page('As senhas precisam ser iguais e ter pelo menos 8 caracteres.', 400, values)
         try:
             with db() as connection:
                 connection.execute(
@@ -360,6 +387,71 @@ def create_app(test_config=None):
         except sqlite3.IntegrityError:
             return registration_page('Já existe uma conta cadastrada com este e-mail.', 409, values)
         return redirect(url_for('login', registered='1'), code=303)
+
+    @app.route('/admin/esqueci-senha', methods=['GET', 'POST'])
+    def forgot_password():
+        if authenticated():
+            return redirect(url_for('dashboard'))
+        if request.method == 'GET':
+            return forgot_password_page()
+        email = request.form.get('email', '').strip().lower()
+        if not valid_email(email):
+            return forgot_password_page('Informe um e-mail válido.', 400, email)
+        user = db().execute('SELECT email FROM users WHERE email = ?', (email,)).fetchone()
+        if not user:
+            return forgot_password_page('Não encontramos um cadastro com este e-mail.', 404, email)
+        if not password_reset_limit(email):
+            return forgot_password_page('Muitas solicitações. Aguarde 15 minutos e tente novamente.', 429, email)
+        challenge = secrets.token_urlsafe(32)
+        code = f'{secrets.randbelow(1000000):06d}'
+        try:
+            with db() as connection:
+                connection.execute('BEGIN IMMEDIATE')
+                connection.execute("DELETE FROM challenges WHERE email = ? AND purpose = 'reset'", (user['email'],))
+                connection.execute(
+                    '''INSERT INTO challenges
+                       (id, code_hash, expires, last_send, email, purpose)
+                       VALUES (?, ?, ?, ?, ?, 'reset')''',
+                    (challenge, code_digest(challenge, code), now() + CODE_LIFETIME, now(), user['email']),
+                )
+                send_code(user['email'], code, purpose='reset')
+        except (smtplib.SMTPException, OSError, RuntimeError, ValueError, json.JSONDecodeError):
+            app.logger.warning('Não foi possível enviar o código de redefinição de senha.')
+            return forgot_password_page('Não foi possível enviar o código. Verifique a configuração de e-mail.', 503, email)
+        session.clear()
+        session['pending_reset'] = challenge
+        csrf()
+        return redirect(url_for('reset_password'), code=303)
+
+    @app.route('/admin/redefinir-senha', methods=['GET', 'POST'])
+    def reset_password():
+        challenge_id = session.get('pending_reset', '')
+        row = db().execute(
+            "SELECT * FROM challenges WHERE id = ? AND purpose = 'reset'", (challenge_id,)
+        ).fetchone()
+        if not row or row['expires'] <= now() or row['attempts'] >= MAX_ATTEMPTS:
+            session.pop('pending_reset', None)
+            return forgot_password_page('O código expirou. Solicite uma nova redefinição.', 401)
+        if request.method == 'GET':
+            return reset_password_page()
+        code = request.form.get('code', '').strip()
+        password = request.form.get('password', '')
+        password_confirmation = request.form.get('password_confirmation', '')
+        if not hmac.compare_digest(code_digest(challenge_id, code), row['code_hash']):
+            with db() as connection:
+                connection.execute('UPDATE challenges SET attempts = attempts + 1 WHERE id = ?', (challenge_id,))
+            return reset_password_page('Código inválido. Confira o e-mail e tente novamente.', 401)
+        if not 8 <= len(password) <= 256 or password != password_confirmation:
+            return reset_password_page('As senhas precisam ser iguais e ter pelo menos 8 caracteres.', 400)
+        password_hash = generate_password_hash(password, method='scrypt')
+        with db() as connection:
+            connection.execute('UPDATE users SET password_hash = ? WHERE email = ?', (password_hash, row['email']))
+            connection.execute('UPDATE admin SET password_hash = ? WHERE email = ?', (password_hash, row['email']))
+            connection.execute('DELETE FROM sessions WHERE email = ?', (row['email'],))
+            connection.execute('DELETE FROM challenges WHERE id = ?', (challenge_id,))
+        session.clear()
+        csrf()
+        return redirect(url_for('login', reset='1'), code=303)
 
     @app.route('/admin/verificar', methods=['GET', 'POST'])
     def verify():
@@ -717,9 +809,9 @@ def main():
             email = existing[0] if existing else args.email.strip().lower()
             if not valid_email(email):
                 parser.error('Informe um e-mail válido.')
-            password = getpass.getpass('Nova senha do painel (mínimo 12 caracteres): ')
-            if not 12 <= len(password) <= 256:
-                parser.error('A senha deve ter de 12 a 256 caracteres.')
+            password = getpass.getpass('Nova senha do painel (mínimo 8 caracteres): ')
+            if not 8 <= len(password) <= 256:
+                parser.error('A senha deve ter de 8 a 256 caracteres.')
             if password != getpass.getpass('Repita a senha: '):
                 parser.error('As senhas não coincidem.')
             connection.execute(

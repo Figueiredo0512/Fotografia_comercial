@@ -13,8 +13,8 @@
       <div class="field"><label for="last_name">Sobrenome</label><input id="last_name" name="last_name" autocomplete="family-name" maxlength="100" value="{{ values.get('last_name', '') }}" required></div>
       <div class="field"><label for="email">E-mail</label><input id="email" name="email" type="email" autocomplete="email" maxlength="254" value="{{ values.get('email', '') }}" required></div>
       <div class="field"><label for="email_confirmation">Confirmação de e-mail</label><input id="email_confirmation" name="email_confirmation" type="email" autocomplete="email" maxlength="254" value="{{ values.get('email_confirmation', '') }}" required></div>
-      <div class="field"><label for="password">Senha <span>(mínimo 12 caracteres)</span></label><input id="password" name="password" type="password" autocomplete="new-password" minlength="12" maxlength="256" required></div>
-      <div class="field"><label for="password_confirmation">Confirmação de senha</label><input id="password_confirmation" name="password_confirmation" type="password" autocomplete="new-password" minlength="12" maxlength="256" required></div>
+      <div class="field"><label for="password">Senha <span>(mínimo 8 caracteres)</span></label><input id="password" name="password" type="password" autocomplete="new-password" minlength="8" maxlength="256" required></div>
+      <div class="field"><label for="password_confirmation">Confirmação de senha</label><input id="password_confirmation" name="password_confirmation" type="password" autocomplete="new-password" minlength="8" maxlength="256" required></div>
       <div class="field register-city"><label for="city">Cidade onde mora</label><input id="city" name="city" autocomplete="address-level2" maxlength="100" value="{{ values.get('city', '') }}" required></div>
     </div>
     <button class="button" type="submit">Criar cadastro <span aria-hidden="true">↗</span></button>
