@@ -129,6 +129,23 @@ class AdminPanelTests(unittest.TestCase):
         visitor = self.app.test_client()
         self.assertEqual(visitor.get('/admin/usuarios').location, '/admin/login')
 
+    def test_edit_user_validates_updates_and_revokes_changed_email_session(self):
+        with self.database() as db:
+            user_id = db.execute('SELECT id FROM users WHERE email=?', ('admin@example.test',)).fetchone()[0]
+        path = f'/admin/usuarios/{user_id}/editar'
+        self.assertEqual(self.app.test_client().get(path).location, '/admin/login')
+        self.assertEqual(self.client.get(path).status_code, 200)
+        data = dict(csrf_token=self.csrf(), first_name='Nome novo', last_name='Teste',
+                    email='admin@example.test', city='Campinas')
+        self.assertEqual(self.client.post(path, data={**data, 'email': 'invalido'}).status_code, 400)
+        self.assertEqual(self.client.post(path, data={}).status_code, 400)
+        self.assertEqual(self.client.post(path, data=data).location, '/admin/usuarios?updated=1')
+        self.assertIn('Nome novo', self.client.get('/admin/usuarios').text)
+        self.assertEqual(self.client.post(path, data={**data, 'email': 'novo@example.test'}).location, '/admin/login')
+        self.assertEqual(self.client.get('/admin/usuarios').location, '/admin/login')
+        with self.database() as db:
+            self.assertEqual(db.execute('SELECT email FROM users WHERE id=?', (user_id,)).fetchone()[0], 'novo@example.test')
+
     def test_authenticated_admin_can_create_user_and_return_to_list(self):
         form = self.client.get('/admin/cadastro')
         self.assertEqual(form.status_code, 200)

@@ -1,0 +1,20 @@
+{% extends 'base.html' %}
+{% block title %}Editar usuário{% endblock %}
+{% block content %}
+<section class="auth-card register-card" aria-labelledby="edit-title">
+  <p class="eyebrow">DADOS DO CADASTRO</p>
+  <h1 id="edit-title">Editar <em>usuário.</em></h1>
+  <p class="description">Atualize os dados abaixo. Ao alterar o e-mail, os acessos anteriores dessa conta serão encerrados e o próximo login usará o novo endereço.</p>
+  {% if error %}<p class="message error" role="alert">{{ error }}</p>{% endif %}
+  <form method="post" action="/admin/usuarios/{{ user.id }}/editar">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="register-grid">
+      {% for field, label in [('first_name', 'Nome'), ('last_name', 'Sobrenome'), ('email', 'E-mail'), ('city', 'Cidade onde mora')] %}
+      <div class="field"><label for="{{ field }}">{{ label }}</label><input id="{{ field }}" name="{{ field }}" type="{{ 'email' if field == 'email' else 'text' }}" maxlength="{{ 254 if field == 'email' else 100 }}" value="{{ user[field] }}" required></div>
+      {% endfor %}
+    </div>
+    <button class="button" type="submit">Salvar alterações <span aria-hidden="true">↗</span></button>
+  </form>
+  <a class="return-link" href="/admin/usuarios">Cancelar e voltar para usuários</a>
+</section>
+{% endblock %}

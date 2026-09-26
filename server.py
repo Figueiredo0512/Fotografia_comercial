@@ -534,11 +534,48 @@ def create_app(test_config=None):
     @app.get('/admin/usuarios')
     def users_admin():
         users = db().execute(
-            '''SELECT first_name, last_name, email, city, created_at
+            '''SELECT id, first_name, last_name, email, city, created_at
                FROM users ORDER BY first_name COLLATE NOCASE, last_name COLLATE NOCASE, id'''
         ).fetchall()
         message = 'Novo usuário criado com sucesso.' if request.args.get('created') == '1' else None
+        if request.args.get('updated') == '1':
+            message = 'Usuário atualizado com sucesso.'
         return render_template('users.html', users=users, message=message)
+
+    @app.route('/admin/usuarios/<int:user_id>/editar', methods=['GET', 'POST'])
+    def edit_user(user_id):
+        user = db().execute(
+            'SELECT id, first_name, last_name, email, city FROM users WHERE id = ?', (user_id,)
+        ).fetchone()
+        if not user:
+            abort(404)
+        values = dict(user)
+        if request.method == 'GET':
+            return render_template('edit_user.html', user=values)
+        for field in ('first_name', 'last_name', 'email', 'city'):
+            values[field] = request.form.get(field, '').strip()
+        values['email'] = values['email'].lower()
+        if (any(not values[field] or len(values[field]) > 100 for field in ('first_name', 'last_name', 'city'))
+                or not valid_email(values['email'])):
+            return render_template('edit_user.html', user=values,
+                                   error='Preencha nome, sobrenome e cidade com até 100 caracteres e informe um e-mail válido.'), 400
+        try:
+            with db() as connection:
+                connection.execute(
+                    'UPDATE users SET first_name=?, last_name=?, email=?, city=? WHERE id=?',
+                    (values['first_name'], values['last_name'], values['email'], values['city'], user_id),
+                )
+                if values['email'] != user['email']:
+                    connection.execute('UPDATE admin SET email=? WHERE email=?', (values['email'], user['email']))
+                    connection.execute('DELETE FROM challenges WHERE email=?', (user['email'],))
+                    connection.execute('DELETE FROM sessions WHERE email=?', (user['email'],))
+        except sqlite3.IntegrityError:
+            return render_template('edit_user.html', user=values,
+                                   error='Já existe uma conta com este e-mail.'), 409
+        if values['email'] != user['email'] and g.user_email == user['email']:
+            session.clear()
+            return redirect(url_for('login'), code=303)
+        return redirect(url_for('users_admin', updated='1'), code=303)
 
     @app.post('/admin/sair')
     def logout():
