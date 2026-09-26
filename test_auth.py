@@ -115,6 +115,19 @@ class AdminPanelTests(unittest.TestCase):
         self.assertEqual(full_gallery.status_code, 200)
         self.assertIn('Café especial', full_gallery.text)
 
+    def test_users_menu_lists_registered_accounts_without_secrets(self):
+        dashboard = self.client.get('/admin/')
+        self.assertIn('href="/admin/usuarios"', dashboard.text)
+        page = self.client.get('/admin/usuarios')
+        self.assertEqual(page.status_code, 200)
+        self.assertIn('Admin Teste', page.text)
+        self.assertIn('admin@example.test', page.text)
+        self.assertIn('Hortolândia', page.text)
+        self.assertNotIn('password_hash', page.text)
+        self.assertNotIn(self.password, page.text)
+        visitor = self.app.test_client()
+        self.assertEqual(visitor.get('/admin/usuarios').location, '/admin/login')
+
     def test_portfolio_rejects_file_with_fake_image_extension(self):
         self.client.get('/admin/portfolio')
         response = self.client.post('/admin/portfolio/imagens', data={

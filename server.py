@@ -545,6 +545,14 @@ def create_app(test_config=None):
                                 open_dialog=selected_date is not None,
                                 selected_date=selected_date.isoformat() if selected_date else None)
 
+    @app.get('/admin/usuarios')
+    def users_admin():
+        users = db().execute(
+            '''SELECT first_name, last_name, email, city, created_at
+               FROM users ORDER BY first_name COLLATE NOCASE, last_name COLLATE NOCASE, id'''
+        ).fetchall()
+        return render_template('users.html', users=users)
+
     @app.post('/admin/sair')
     def logout():
         with db() as connection:

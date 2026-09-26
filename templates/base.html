@@ -14,6 +14,7 @@
     {% if admin_authenticated %}<nav class="admin-nav" aria-label="Menu administrativo">
       <a href="/admin/">Agenda</a>
       <a href="/admin/portfolio">Portfólio</a>
+      <a href="/admin/usuarios">Usuários</a>
       <form method="post" action="/admin/sair"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="nav-button" type="submit">Sair</button></form>
       <a class="back-link" href="/">Ver site <span aria-hidden="true">↗</span></a>
     </nav>{% else %}<a class="back-link" href="/">Ver site <span aria-hidden="true">↗</span></a>{% endif %}

@@ -144,6 +144,16 @@ select:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
 .delete-button { border: 1px solid #a7352b; background: transparent; color: #8e2d25; padding: 10px 16px; cursor: pointer; font: inherit; white-space: nowrap; }
 .delete-button:hover { background: #a7352b; color: #fff; }
 .portfolio-admin { width: min(100%, 1150px); padding: 68px 24px; margin: auto; }
+.users-admin { width: min(100%, 1150px); padding: 68px 24px; margin: auto; }
+.users-admin > .description { max-width: 620px; }
+.users-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; margin-top: 24px; }
+.user-card { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 18px; padding: 24px; border: 1px solid var(--line); background: #fffcf7; }
+.user-initials { display: grid; place-items: center; width: 52px; height: 52px; border-radius: 50%; background: var(--sand); color: var(--accent); font: normal 20px/1 var(--serif); }
+.user-card h2 { margin: 0 0 4px; font-size: 24px; overflow-wrap: anywhere; }
+.user-card .account-email { margin: 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.user-card dl { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin: 4px 0 0; padding-top: 16px; border-top: 1px solid var(--line); }
+.user-card dt { margin-bottom: 3px; color: var(--muted); font-size: 10px; letter-spacing: 1px; text-transform: uppercase; }
+.user-card dd { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
 .portfolio-admin > .description { max-width: 620px; }
 .portfolio-form { max-width: 680px; padding: 28px; border: 1px solid var(--line); background: #fffcf7; }
 input[type=file] { padding: 10px; }
@@ -173,6 +183,7 @@ label span { color: var(--muted); }
   .calendar-day { padding: 6px; }
   .panel { padding: 24px; }
   .portfolio-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .users-grid { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 600px) {
   .admin-header { padding: 22px 0; }
@@ -213,9 +224,11 @@ label span { color: var(--muted); }
   .admin-nav { flex-wrap: wrap; justify-content: flex-end; gap: 4px 16px; }
   .admin-nav > a { padding: 6px 0; }
   .portfolio-admin { padding: 36px 16px; }
+  .users-admin { padding: 36px 16px; }
   .portfolio-form { padding: 20px; }
   .portfolio-library { margin-top: 40px; }
   .portfolio-grid { grid-template-columns: minmax(0, 1fr); }
   .register-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
   .register-city { grid-column: auto; }
+  .user-card dl { grid-template-columns: minmax(0, 1fr); }
 }

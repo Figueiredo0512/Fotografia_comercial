@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+{% block body_class %}dashboard-page{% endblock %}
+{% block title %}Usuários{% endblock %}
+{% block content %}
+<section class="users-admin" aria-labelledby="users-title">
+  <p class="eyebrow">ACESSOS DO PAINEL</p>
+  <h1 id="users-title">Usuários<br><em>cadastrados.</em></h1>
+  <p class="description">Consulte quem possui acesso administrativo. Senhas e códigos nunca são exibidos.</p>
+  <p class="image-count">{{ users|length }} {{ 'usuário cadastrado' if users|length == 1 else 'usuários cadastrados' }}</p>
+  {% if users %}<div class="users-grid">
+    {% for user in users %}<article class="user-card">
+      <span class="user-initials" aria-hidden="true">{{ user.first_name[:1]|upper }}{{ user.last_name[:1]|upper }}</span>
+      <div><h2>{{ user.first_name }} {{ user.last_name }}</h2><p class="account-email">{{ user.email }}</p></div>
+      <dl><div><dt>Cidade</dt><dd>{{ user.city }}</dd></div><div><dt>Cadastrado em</dt><dd>{{ user.created_at[8:10] }}/{{ user.created_at[5:7] }}/{{ user.created_at[:4] }}</dd></div></dl>
+    </article>{% endfor %}
+  </div>{% else %}<p class="empty-state">Nenhum usuário cadastrado.</p>{% endif %}
+</section>
+{% endblock %}

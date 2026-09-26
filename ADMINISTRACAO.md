@@ -42,6 +42,8 @@ Use **Editar foto** na biblioteca para alterar título, descrição ou substitui
 
 O menu superior oferece acesso à página **Portfólio**. Nela é possível enviar fotografias JPEG, PNG ou WebP de até 12 MB, com título e descrição. Os arquivos ficam em `.fotografia-admin/portfolio/` e os dados de organização ficam na tabela `portfolio_images` do banco local. Essa pasta não deve ser enviada ao GitHub.
 
+O item **Usuários** abre `/admin/usuarios` e lista nome, e-mail, cidade e data de cadastro das contas com acesso ao painel. Senhas, hashes, códigos e credenciais SMTP não são exibidos.
+
 As cinco fotografias mais recentes aparecem automaticamente no carrossel da página inicial. O sexto card, **Ver mais**, abre `/portfolio`, onde todas as imagens cadastradas são apresentadas. Enquanto houver menos de cinco fotos, os lugares restantes continuam marcados como espaços reservados.
 
 ## Verificação
