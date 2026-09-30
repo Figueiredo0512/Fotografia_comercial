@@ -111,6 +111,13 @@ def create_app(test_config=None):
                 bucket TEXT NOT NULL, at REAL NOT NULL
             );
             CREATE INDEX IF NOT EXISTS attempts_lookup ON attempts(bucket, at);
+            CREATE TABLE IF NOT EXISTS login_locks (
+                email TEXT PRIMARY KEY, failures INTEGER NOT NULL DEFAULT 0,
+                blocked_until REAL NOT NULL DEFAULT 0
+            );
+            CREATE TABLE IF NOT EXISTS reset_links (
+                token_hash TEXT PRIMARY KEY, email TEXT NOT NULL, expires REAL NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS visits (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 visit_date TEXT NOT NULL,
@@ -217,7 +224,7 @@ def create_app(test_config=None):
             g.admin_authenticated = authenticated()
             public_endpoints = {
                 'asset', 'login', 'verify', 'resend',
-                'forgot_password', 'reset_password',
+                'forgot_password', 'reset_password', 'reset_link',
             }
             if request.endpoint not in public_endpoints and not g.admin_authenticated:
                 return redirect(url_for('login'))
@@ -277,6 +284,9 @@ def create_app(test_config=None):
             'Ele expira em até 10 minutos e só pode ser usado uma vez.\n'
             'Se você não solicitou este acesso, ignore esta mensagem.\n'
         )
+        if purpose == 'reset_link':
+            message.replace_header('Subject', 'Redefina sua senha — Clique no Prato')
+            message.set_content(f'Um administrador solicitou a redefinição da sua senha.\n\n{code}\n\nO link expira em 10 minutos e só pode ser usado uma vez. Se não reconhecer a solicitação, ignore este e-mail. Sua senha permanece inalterada.')
         context = ssl.create_default_context()
         smtp_password = config['password']
         if str(config.get('host', '')).lower() == 'smtp.gmail.com':
@@ -352,9 +362,21 @@ def create_app(test_config=None):
         if len(email) > 254 or len(password) > 256:
             return login_page('E-mail ou senha incorretos.', 401, email)
         user = db().execute('SELECT * FROM users WHERE email = ?', (email,)).fetchone()
-        correct = check_password_hash(user['password_hash'] if user else dummy_hash, password)
-        if not user or not correct:
-            return login_page('E-mail ou senha incorretos.', 401, email)
+        with db() as connection:
+            connection.execute('BEGIN IMMEDIATE')
+            lock = connection.execute('SELECT failures, blocked_until FROM login_locks WHERE email=?', (email,)).fetchone()
+            if lock and lock['blocked_until'] > now():
+                return login_page('Acesso bloqueado após 5 senhas incorretas. Tente novamente em 15 minutos após o bloqueio.', 429, email)
+            failures = lock['failures'] if lock and not lock['blocked_until'] else 0
+            correct = check_password_hash(user['password_hash'] if user else dummy_hash, password)
+            if not user or not correct:
+                failures += 1
+                connection.execute('INSERT OR REPLACE INTO login_locks VALUES (?, ?, ?)',
+                                   (email, failures, now() + 900 if failures >= 5 else 0))
+                if failures >= 5:
+                    return login_page('Você errou a senha 5 vezes. Tente novamente em 15 minutos.', 429, email)
+                return login_page('E-mail ou senha incorretos.', 401, email)
+            connection.execute('DELETE FROM login_locks WHERE email=?', (email,))
         challenge = secrets.token_urlsafe(32)
         code = f'{secrets.randbelow(1000000):06d}'
         try:
@@ -470,6 +492,8 @@ def create_app(test_config=None):
             connection.execute('UPDATE admin SET password_hash = ? WHERE email = ?', (password_hash, row['email']))
             connection.execute('DELETE FROM sessions WHERE email = ?', (row['email'],))
             connection.execute('DELETE FROM challenges WHERE email = ?', (row['email'],))
+            connection.execute('DELETE FROM reset_links WHERE email = ?', (row['email'],))
+            connection.execute('DELETE FROM login_locks WHERE email = ?', (row['email'],))
         session.clear()
         csrf()
         return redirect(url_for('login', reset='1'), code=303)
@@ -576,7 +600,7 @@ def create_app(test_config=None):
         ).fetchone()
         if not user:
             abort(404)
-        values = dict(user)
+        values = dict(user, saved_email=user['email'])
         if request.method == 'GET':
             return render_template('edit_user.html', user=values)
         for field in ('first_name', 'last_name', 'email', 'city'):
@@ -596,6 +620,8 @@ def create_app(test_config=None):
                     connection.execute('UPDATE admin SET email=? WHERE email=?', (values['email'], user['email']))
                     connection.execute('DELETE FROM challenges WHERE email=?', (user['email'],))
                     connection.execute('DELETE FROM sessions WHERE email=?', (user['email'],))
+                    connection.execute('DELETE FROM reset_links WHERE email=?', (user['email'],))
+                    connection.execute('DELETE FROM login_locks WHERE email=?', (user['email'],))
         except sqlite3.IntegrityError:
             return render_template('edit_user.html', user=values,
                                    error='Já existe uma conta com este e-mail.'), 409
@@ -611,6 +637,56 @@ def create_app(test_config=None):
             connection.execute('DELETE FROM challenges WHERE id = ?', (session.get('pending', ''),))
         session.clear()
         return redirect(url_for('login'), code=303)
+
+    @app.post('/admin/usuarios/<int:user_id>/enviar-reset')
+    def send_user_reset(user_id):
+        user = db().execute('SELECT * FROM users WHERE id=?', (user_id,)).fetchone()
+        if not user:
+            abort(404)
+        if not password_reset_limit(user['email']):
+            return render_template('edit_user.html', user=user, error='Aguarde 15 minutos antes de solicitar outro link.'), 429
+        token = secrets.token_urlsafe(32)
+        base = ('https://' + app.config['TRUSTED_HOSTS'][0]) if app.config['PRODUCTION'] else request.host_url.rstrip('/')
+        link = base + url_for('reset_link') + '?token=' + token
+        try:
+            with db() as connection:
+                connection.execute('DELETE FROM reset_links WHERE email=? OR expires<=?', (user['email'], now()))
+                connection.execute('INSERT INTO reset_links VALUES (?, ?, ?)', (digest(token), user['email'], now() + CODE_LIFETIME))
+                send_code(user['email'], link, purpose='reset_link')
+        except (smtplib.SMTPException, OSError, RuntimeError, ValueError, json.JSONDecodeError) as error:
+            app.logger.warning('Falha no envio do link: %s.', type(error).__name__)
+            return render_template('edit_user.html', user=user, error=email_delivery_error(error)), 503
+        return render_template('edit_user.html', user=user, message='Link de redefinição enviado ao e-mail cadastrado. Válido por 10 minutos.')
+
+    @app.route('/admin/redefinir-link', methods=['GET', 'POST'])
+    def reset_link():
+        token = request.args.get('token') if request.method == 'GET' else None
+        token_hash = digest(token) if token else session.get('pending_link', '')
+        with db() as connection:
+            connection.execute('BEGIN IMMEDIATE')
+            row = connection.execute('SELECT * FROM reset_links WHERE token_hash=? AND expires>?', (token_hash, now())).fetchone()
+            if not row:
+                session.pop('pending_link', None)
+                return render_template('error.html', message='Link inválido, expirado ou já utilizado. Solicite um novo link.'), 400
+            if token:
+                session.clear()
+                session['pending_link'] = token_hash
+                csrf()
+                response = redirect(url_for('reset_link'), code=303)
+                response.headers['Referrer-Policy'] = 'no-referrer'
+                return response
+            if request.method == 'GET':
+                return render_template('reset_password.html', via_link=True)
+            password = request.form.get('password', '')
+            if not 8 <= len(password) <= 256 or password != request.form.get('password_confirmation', ''):
+                return render_template('reset_password.html', via_link=True, error='As senhas precisam ser iguais e ter pelo menos 8 caracteres.'), 400
+            hashed = generate_password_hash(password, method='scrypt')
+            connection.execute('UPDATE users SET password_hash=? WHERE email=?', (hashed, row['email']))
+            connection.execute('UPDATE admin SET password_hash=? WHERE email=?', (hashed, row['email']))
+            for table in ('sessions', 'challenges', 'reset_links', 'login_locks'):
+                connection.execute(f'DELETE FROM {table} WHERE email=?', (row['email'],))
+        session.clear()
+        return redirect(url_for('login', reset='1'), code=303)
 
     def portfolio_page(error=None, status=200):
         images = db().execute(

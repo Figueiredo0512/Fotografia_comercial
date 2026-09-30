@@ -274,20 +274,86 @@ class AdminPanelTests(unittest.TestCase):
         self.assertEqual(len(self.mailbox), sent_before)
         self.assertEqual(visitor.get('/admin/').location, '/admin/login')
 
-    def test_login_does_not_block_after_repeated_wrong_passwords(self):
+    def test_login_blocks_five_failures_for_fifteen_minutes(self):
+        clock = [1000000.0]
+        self.app.config['NOW'] = lambda: clock[0]
         visitor = self.app.test_client()
         visitor.get('/admin/login')
-        for _ in range(6):
+        for attempt in range(5):
             response = visitor.post('/admin/login', data={
                 'csrf_token': self.csrf(visitor), 'email': 'admin@example.test', 'password': 'senha-incorreta',
             })
-            self.assertEqual(response.status_code, 401)
-            self.assertNotIn('Muitas tentativas', response.text)
+            self.assertEqual(response.status_code, 401 if attempt < 4 else 429)
+        for elapsed in (0, 899):
+            clock[0] = 1000000.0 + elapsed
+            self.assertEqual(visitor.post('/admin/login', data={
+                'csrf_token': self.csrf(visitor), 'email': 'ADMIN@example.test', 'password': self.password,
+            }).status_code, 429)
+        clock[0] = 1000900.0
         correct = visitor.post('/admin/login', data={
             'csrf_token': self.csrf(visitor), 'email': 'admin@example.test', 'password': self.password,
         })
         self.assertEqual(correct.status_code, 303)
         self.assertEqual(correct.location, '/admin/verificar')
+
+    def test_admin_reset_link_is_protected_single_use_and_resets_password(self):
+        with self.database() as db:
+            user_id = db.execute('SELECT id FROM users').fetchone()[0]
+        path = f'/admin/usuarios/{user_id}/enviar-reset'
+        visitor = self.app.test_client()
+        self.assertEqual(visitor.post(path).status_code, 302)
+        self.assertEqual(self.client.post(path, data={'csrf_token': 'wrong'}).status_code, 400)
+        response = self.client.post(path, data={'csrf_token': self.csrf()})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('Link de redefinição enviado', response.text)
+        email, link = self.mailbox[-1]
+        self.assertEqual(email, 'admin@example.test')
+        self.assertIn('/admin/redefinir-link?token=', link)
+        opened = visitor.get(link)
+        self.assertEqual(opened.status_code, 303)
+        self.assertNotIn('token=', opened.location)
+        self.assertNotIn('name="code"', visitor.get(opened.location).text)
+        data = dict(csrf_token=self.csrf(visitor), password='nova-senha-123', password_confirmation='nova-senha-123')
+        self.assertEqual(visitor.post('/admin/redefinir-link', data={**data, 'password': 'curta'}).status_code, 400)
+        self.assertEqual(visitor.post('/admin/redefinir-link', data=data).status_code, 303)
+        self.assertEqual(visitor.get(link).status_code, 400)
+        self.assertEqual(self.client.get('/admin/').status_code, 302)
+        visitor.get('/admin/login')
+        self.assertEqual(visitor.post('/admin/login', data={'csrf_token': self.csrf(visitor), 'email': email, 'password': 'nova-senha-123'}).status_code, 303)
+
+    def test_admin_reset_link_expires_and_failed_email_is_not_success(self):
+        with self.database() as db:
+            user_id = db.execute('SELECT id FROM users').fetchone()[0]
+        path = f'/admin/usuarios/{user_id}/enviar-reset'
+        self.client.post(path, data={'csrf_token': self.csrf()})
+        link = self.mailbox[-1][1]
+        current = self.app.config['NOW']()
+        self.app.config['NOW'] = lambda: current + 601
+        self.assertEqual(self.app.test_client().get(link).status_code, 400)
+        self.app.config['SEND_CODE'] = lambda *_: (_ for _ in ()).throw(smtplib.SMTPException('test failure'))
+        self.assertEqual(self.client.post(path, data={'csrf_token': self.csrf()}).status_code, 503)
+
+    def test_reset_button_sends_to_other_saved_user_via_smtp(self):
+        with self.database() as db:
+            db.execute("INSERT INTO users (first_name,last_name,email,password_hash,city,created_at) VALUES ('Outra','Pessoa','outra@example.test',?,'Campinas','2026-09-30')", (generate_password_hash('senha-outra-123'),))
+            db.commit()
+            user_id, original_hash = db.execute("SELECT id,password_hash FROM users WHERE email='outra@example.test'").fetchone()
+        page = self.client.get(f'/admin/usuarios/{user_id}/editar')
+        self.assertIn(f'action="/admin/usuarios/{user_id}/enviar-reset"', page.text)
+        self.assertIn('Enviar para: <strong>outra@example.test</strong>', page.text)
+        self.app.config.update(SEND_CODE=None, SMTP=dict(host='smtp.example.test', port=465,
+            username='test', password='fake-test-only', sender='envio@example.test', security='ssl'))
+        with patch('server.smtplib.SMTP_SSL') as transport:
+            response = self.client.post(f'/admin/usuarios/{user_id}/enviar-reset', data={
+                'csrf_token': self.csrf(), 'email': 'intruso@example.test'})
+            self.assertEqual(response.status_code, 200)
+            message = transport.return_value.__enter__.return_value.send_message.call_args.args[0]
+            self.assertEqual(message['To'], 'outra@example.test')
+            self.assertEqual(message['Subject'], 'Redefina sua senha — Clique no Prato')
+            self.assertIn('/admin/redefinir-link?token=', message.get_content())
+        self.assertEqual(self.client.get('/admin/').status_code, 200)
+        with self.database() as db:
+            self.assertEqual(db.execute('SELECT password_hash FROM users WHERE id=?', (user_id,)).fetchone()[0], original_hash)
 
     def test_gmail_authentication_failure_explains_app_password(self):
         visitor = self.app.test_client()

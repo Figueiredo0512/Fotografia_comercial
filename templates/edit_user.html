@@ -6,6 +6,7 @@
   <h1 id="edit-title">Editar <em>usuário.</em></h1>
   <p class="description">Atualize os dados abaixo. Ao alterar o e-mail, os acessos anteriores dessa conta serão encerrados e o próximo login usará o novo endereço.</p>
   {% if error %}<p class="message error" role="alert">{{ error }}</p>{% endif %}
+  {% if message %}<p class="message success" role="status">{{ message }}</p>{% endif %}
   <form method="post" action="/admin/usuarios/{{ user.id }}/editar">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="register-grid">
@@ -16,5 +17,11 @@
     <button class="button" type="submit">Salvar alterações <span aria-hidden="true">↗</span></button>
   </form>
   <a class="return-link" href="/admin/usuarios">Cancelar e voltar para usuários</a>
+  <form method="post" action="/admin/usuarios/{{ user.id }}/enviar-reset">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <p>Enviar para: <strong>{{ user.saved_email or user.email }}</strong></p>
+    <p>Salve alterações de e-mail antes de enviar. A senha só muda quando a pessoa concluir a redefinição. O link é válido por 10 minutos.</p>
+    <button class="button" type="submit">Enviar link de redefinição de senha</button>
+  </form>
 </section>
 {% endblock %}
