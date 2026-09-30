@@ -143,6 +143,8 @@ def create_app(test_config=None):
             db.execute("ALTER TABLE sessions ADD COLUMN email TEXT NOT NULL DEFAULT ''")
         if 'hidden' not in photo_columns:
             db.execute('ALTER TABLE portfolio_images ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0')
+        if 'placement' not in photo_columns:
+            db.execute("ALTER TABLE portfolio_images ADD COLUMN placement TEXT NOT NULL DEFAULT 'portfolio'")
         if 'visit_type' not in columns:
             db.execute("ALTER TABLE visits ADD COLUMN visit_type TEXT NOT NULL DEFAULT 'reuniao'")
         if 'equipment' not in columns:
@@ -311,14 +313,15 @@ def create_app(test_config=None):
     @app.get('/index.html')
     def home():
         images = db().execute(
-            'SELECT filename, title, description FROM portfolio_images WHERE hidden = 0 ORDER BY id DESC LIMIT 5'
+            "SELECT filename, title, description FROM portfolio_images WHERE hidden = 0 AND placement = 'portfolio' ORDER BY id DESC LIMIT 5"
         ).fetchall()
-        return render_template_string((ROOT / 'index.html').read_text(), portfolio_images=images)
+        hero = db().execute("SELECT filename, title, description FROM portfolio_images WHERE hidden = 0 AND placement = 'hero' ORDER BY id DESC LIMIT 1").fetchone()
+        return render_template_string((ROOT / 'index.html').read_text(), portfolio_images=images, hero_image=hero)
 
     @app.get('/portfolio')
     def public_portfolio():
         images = db().execute(
-            'SELECT filename, title, description FROM portfolio_images WHERE hidden = 0 ORDER BY id DESC'
+            "SELECT filename, title, description FROM portfolio_images WHERE hidden = 0 AND placement = 'portfolio' ORDER BY id DESC"
         ).fetchall()
         return render_template('public_portfolio.html', images=images)
 
@@ -607,9 +610,9 @@ def create_app(test_config=None):
 
     def portfolio_page(error=None, status=200):
         images = db().execute(
-            'SELECT id, filename, title, description, created_at, hidden FROM portfolio_images ORDER BY id DESC'
+            'SELECT id, filename, title, description, created_at, hidden, placement FROM portfolio_images ORDER BY id DESC'
         ).fetchall()
-        message = 'Foto adicionada ao portfólio.' if request.args.get('saved') == '1' else None
+        message = 'Foto adicionada ao local escolhido.' if request.args.get('saved') == '1' else None
         if request.args.get('deleted') == '1':
             message = 'Foto excluída.'
         return render_template('portfolio.html', images=images, message=message, error=error), status
@@ -621,6 +624,9 @@ def create_app(test_config=None):
     @app.post('/admin/portfolio/imagens')
     def add_portfolio_image():
         upload = request.files.get('image')
+        placement = request.form.get('placement', 'portfolio')
+        if placement not in ('portfolio', 'hero'):
+            return portfolio_page('Escolha um local válido para a foto.', 400)
         title = request.form.get('title', '').strip()
         description = request.form.get('description', '').strip()
         if not upload or not upload.filename or not title or len(title) > 120 or len(description) > 500:
@@ -632,9 +638,11 @@ def create_app(test_config=None):
         target = portfolio_dir / filename
         try:
             with db() as connection:
+                if placement == 'hero':
+                    connection.execute("UPDATE portfolio_images SET hidden = 1 WHERE placement = 'hero'")
                 connection.execute(
-                    'INSERT INTO portfolio_images (filename, title, description, mime_type, created_at) VALUES (?, ?, ?, ?, ?)',
-                    (filename, title, description, mime_type, datetime.now().isoformat(timespec='seconds')),
+                    'INSERT INTO portfolio_images (filename, title, description, mime_type, created_at, placement) VALUES (?, ?, ?, ?, ?, ?)',
+                    (filename, title, description, mime_type, datetime.now().isoformat(timespec='seconds'), placement),
                 )
         except sqlite3.Error:
             target.unlink(missing_ok=True)
@@ -672,7 +680,10 @@ def create_app(test_config=None):
             return render_template('edit_photo.html', photo=photo)
         values = dict(photo, title=request.form.get('title', '').strip(),
                       description=request.form.get('description', '').strip(),
+                      placement=request.form.get('placement', photo['placement']),
                       hidden=int(request.form.get('hidden') == '1'))
+        if values['placement'] not in ('portfolio', 'hero'):
+            return render_template('edit_photo.html', photo=values, error='Escolha um local válido para a foto.'), 400
         if not values['title'] or len(values['title']) > 120 or len(values['description']) > 500:
             return render_template('edit_photo.html', photo=values, error='Informe um título de até 120 caracteres e uma descrição de até 500.'), 400
         upload = request.files.get('image')
@@ -685,8 +696,10 @@ def create_app(test_config=None):
         filename, mime = replacement or (photo['filename'], photo['mime_type'])
         try:
             with db() as connection:
-                connection.execute('UPDATE portfolio_images SET title=?, description=?, hidden=?, filename=?, mime_type=? WHERE id=?',
-                                   (values['title'], values['description'], values['hidden'], filename, mime, image_id))
+                if values['placement'] == 'hero' and not values['hidden']:
+                    connection.execute("UPDATE portfolio_images SET hidden = 1 WHERE placement = 'hero' AND id != ?", (image_id,))
+                connection.execute('UPDATE portfolio_images SET title=?, description=?, hidden=?, filename=?, mime_type=?, placement=? WHERE id=?',
+                                   (values['title'], values['description'], values['hidden'], filename, mime, values['placement'], image_id))
         except sqlite3.Error:
             if replacement:
                 (portfolio_dir / filename).unlink(missing_ok=True)

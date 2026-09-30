@@ -40,6 +40,8 @@ No painel, a seção **Agenda de visitas** mostra o mês selecionado e permite a
 
 ## Portfólio local
 
+No envio e em **Editar foto**, o campo **Onde exibir a foto?** permite escolher **Portfólio** (carrossel e galeria) ou **01 / O primeiro olhar** (destaque da página inicial). As fotos anteriores permanecem no portfólio. O destaque aceita uma foto visível por vez: ao selecionar outra, a anterior é escondida e permanece na biblioteca. Para restaurá-la, edite e desmarque **Esconder foto**. Sem destaque visível, a página volta ao espaço reservado. A imagem de destaque preenche o quadro com recorte central; confira o enquadramento no celular. Os cards indicam destino e visibilidade.
+
 Use **Editar foto** na biblioteca para alterar título, descrição ou substituir a imagem. **Esconder foto** retira a imagem da home, da galeria e do endereço público do arquivo, mantendo-a no painel. Desmarque para exibir novamente. **Excluir foto** abre uma confirmação e remove o cadastro e o arquivo; substituir a imagem também remove o arquivo anterior.
 
 O menu superior oferece acesso à página **Portfólio**. Nela é possível enviar fotografias JPEG, PNG ou WebP de até 12 MB, com título e descrição. Os arquivos ficam em `.fotografia-admin/portfolio/` e os dados de organização ficam na tabela `portfolio_images` do banco local. Essa pasta não deve ser enviada ao GitHub.

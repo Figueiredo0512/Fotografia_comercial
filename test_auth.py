@@ -87,6 +87,38 @@ class AdminPanelTests(unittest.TestCase):
         self.assertIn(b'admin@example.test', response.data)
         self.assertIn('no-store', response.headers['Cache-Control'])
 
+    def test_photo_placement_and_hero_replacement(self):
+        def upload(title, placement):
+            return self.client.post('/admin/portfolio/imagens', data={
+                'csrf_token': self.csrf(), 'title': title, 'placement': placement,
+                'image': (BytesIO(b'\xff\xd8\xff\xe0test'), 'foto.jpg'),
+            })
+        self.assertEqual(upload('Galeria teste', 'portfolio').status_code, 302)
+        self.assertEqual(upload('Destaque primeiro', 'hero').status_code, 302)
+        self.assertIn('Destaque primeiro', self.client.get('/').text)
+        self.assertNotIn('Destaque primeiro', self.client.get('/portfolio').text)
+        self.assertIn('Galeria teste', self.client.get('/portfolio').text)
+        self.assertEqual(upload('Destaque novo', 'hero').status_code, 302)
+        with self.database() as db:
+            old_id, old_file, hidden = db.execute("SELECT id, filename, hidden FROM portfolio_images WHERE title='Destaque primeiro'").fetchone()
+            new_id = db.execute("SELECT id FROM portfolio_images WHERE title='Destaque novo'").fetchone()[0]
+        self.assertEqual(hidden, 1)
+        self.assertEqual(self.client.get('/portfolio/imagens/' + old_file).status_code, 404)
+        self.assertIn('Destaque primeiro', self.client.get('/admin/portfolio').text)
+        self.assertNotIn('Destaque primeiro', self.client.get('/').text)
+        self.assertEqual(upload('Inválido', 'other').status_code, 400)
+        edit = dict(csrf_token=self.csrf(), title='Destaque novo', description='', placement='portfolio')
+        self.assertEqual(self.client.post(f'/admin/portfolio/{new_id}/editar', data=edit).status_code, 303)
+        self.assertIn('Destaque novo', self.client.get('/portfolio').text)
+        self.assertIn('Sua próxima imagem de destaque.', self.client.get('/').text)
+        edit.update(title='Restaurada', placement='hero')
+        self.assertEqual(self.client.post(f'/admin/portfolio/{old_id}/editar', data=edit).status_code, 303)
+        self.assertIn('Restaurada', self.client.get('/').text)
+        self.assertNotIn('Restaurada', self.client.get('/portfolio').text)
+        edit['hidden'] = '1'
+        self.client.post(f'/admin/portfolio/{old_id}/editar', data=edit)
+        self.assertIn('Sua próxima imagem de destaque.', self.client.get('/').text)
+
     def test_portfolio_menu_and_image_upload(self):
         dashboard = self.client.get('/admin/')
         self.assertIn('href="/admin/portfolio"', dashboard.text)
