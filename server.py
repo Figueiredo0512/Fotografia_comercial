@@ -790,6 +790,8 @@ def create_app(test_config=None):
                 raise ValueError
         except ValueError:
             return None, 'Informe uma data e um horário válidos.'
+        if parsed_time.hour < 7:
+            return None, 'Escolha um horário entre 07:00 e 23:55, com minutos de 5 em 5.'
         if payload['visit_type'] not in {'reuniao', 'ensaio'}:
             return None, 'Escolha se a visita será uma reunião ou um ensaio.'
         if payload['visit_type'] == 'ensaio' and not payload['equipment']:

@@ -75,7 +75,7 @@ class AdminPanelTests(unittest.TestCase):
         self.client.get('/admin/')
         today = datetime.now(ZoneInfo('America/Sao_Paulo')).date()
         for day in [today, today + timedelta(days=1)]:
-            result = self.client.post('/admin/visitas', data=dict(csrf_token=self.csrf(), client='Reunião', visit_date=day.isoformat(), visit_time='00:00', visit_type='reuniao'))
+            result = self.client.post('/admin/visitas', data=dict(csrf_token=self.csrf(), client='Reunião', visit_date=day.isoformat(), visit_time='07:00', visit_type='reuniao'))
             self.assertEqual(result.status_code, 302)
 
     def database(self):
