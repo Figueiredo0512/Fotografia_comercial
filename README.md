@@ -1,4 +1,4 @@
-# Fotografia gastronômica — Hortolândia
+# Clique no Prato — Hortolândia
 
 Site de apresentação e contato em HTML/CSS, com servidor Flask e painel administrativo local. Portfólio gastronômico em construção; os espaços de imagens estão explicitamente identificados. Contato por e-mail e WhatsApp, além de link para o trabalho de fotografia esportiva.
 

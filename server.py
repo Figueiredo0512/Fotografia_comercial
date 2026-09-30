@@ -271,7 +271,7 @@ def create_app(test_config=None):
         message['From'] = config['sender']
         message['To'] = email
         action = 'redefinição de senha' if purpose == 'reset' else 'acesso'
-        message['Subject'] = f'Seu código de {action} — Fotografia gastronômica'
+        message['Subject'] = f'Seu código de {action} — Clique no Prato'
         message.set_content(
             f'Seu código de {action} é: {code}\n\n'
             'Ele expira em até 10 minutos e só pode ser usado uma vez.\n'
