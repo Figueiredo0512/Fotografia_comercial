@@ -1,0 +1,8 @@
+<div class="field">
+  <label for="placement">Onde exibir a foto?</label>
+  <select id="placement" name="placement" aria-describedby="placement-help" required>
+    <option value="portfolio" {% if selected_placement == 'portfolio' %}selected{% endif %}>Portfólio</option>
+    <option value="hero" {% if selected_placement == 'hero' %}selected{% endif %}>01 / O primeiro olhar</option>
+  </select>
+  <p id="placement-help">O primeiro olhar exibe uma foto por vez. Uma nova foto visível nesse espaço esconde a anterior, mantendo-a nesta biblioteca. Ela não aparece na galeria do portfólio.</p>
+</div>

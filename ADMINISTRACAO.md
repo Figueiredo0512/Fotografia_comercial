@@ -24,7 +24,11 @@ Para configurar ou atualizar o envio do código, execute `.venv/bin/python serve
 
 O fluxo é: `/admin/login` recebe e-mail e senha; `/admin/verificar` recebe o código de seis dígitos; `/admin/` abre agenda e portfólio após as duas etapas. Somente um administrador já autenticado pode acessar `/admin/cadastro`, pelo botão **Novo usuário**. O código expira em dez minutos e a sessão em uma hora. O botão **Sair** encerra a sessão.
 
-Não há bloqueio por quantidade de tentativas de e-mail e senha. O código de confirmação continua limitado a cinco tentativas por solicitação e expira em dez minutos.
+Após cinco senhas incorretas para o mesmo e-mail, o login fica bloqueado por 15 minutos contados a partir do quinto erro. Novas tentativas durante o bloqueio não prolongam esse prazo. Uma senha correta antes do limite zera a contagem; depois do bloqueio é preciso aguardar ou concluir a recuperação de senha. O controle persiste ao reiniciar o servidor. O código de confirmação continua limitado a cinco tentativas por solicitação e expira em dez minutos.
+
+Em **Usuários → Editar usuário**, o botão **Enviar link de redefinição de senha** envia um link ao e-mail salvo da conta. Somente administradores autenticados podem acionar o envio, com proteção CSRF e limite de três solicitações de recuperação por conta em 15 minutos. O link vale por dez minutos e só pode concluir uma redefinição. Abrir o link não muda a senha; concluir a troca invalida sessões, códigos, links anteriores e o bloqueio de login da conta. O banco armazena somente o hash do token do link. Salve qualquer mudança no e-mail antes de usar o botão.
+
+Na prévia local, os links apontam para localhost/127.0.0.1 e funcionam apenas no computador que está executando o site. Para destinatários acessarem de outros dispositivos pela internet, é necessário publicar com HTTPS; em produção, os links usam o primeiro domínio de `FG_TRUSTED_HOSTS`. O proxy de produção não deve registrar query strings desta rota, pois contêm o token temporário.
 
 O cadastro solicita nome, sobrenome, e-mail com confirmação, senha com confirmação e cidade. A senha precisa ter pelo menos 8 caracteres e fica armazenada somente como hash. O e-mail não pode ser repetido. Não há cadastro público: GET e POST exigem sessão administrativa validada por código, e POST também exige CSRF. Todas as contas são administrativas, sem níveis de privilégio. O primeiro administrador de uma instalação vazia deve ser criado no Terminal com `.venv/bin/python server.py init-admin --email SEU_EMAIL`, digitando a senha somente no prompt. Contas existentes não são removidas automaticamente; revise a lista de usuários antes de publicar.
 
@@ -36,9 +40,13 @@ Banco, fotos, chave de sessão e configuração SMTP ficam em **`.fotografia-adm
 
 ## Agenda de visitas
 
+Novos eventos registram automaticamente o ID e o nome completo da conta autenticada que confirmou o cadastro. **Cadastrado por** aparece no pop-up do calendário e na página de edição, tanto para reuniões quanto ensaios. O nome é preservado como histórico e não muda quando o evento ou o perfil são editados. Eventos anteriores mostram **Não registrado (evento anterior a este recurso)**; não atribuímos autoria retroativa.
+
 No painel, a seção **Agenda de visitas** mostra o mês selecionado e permite avançar ou voltar entre meses. O botão **Nova visita** abre um pop-up para escolher entre reunião e ensaio, registrar estabelecimento, data e horário em intervalos de cinco minutos. Em ensaios, o campo de equipamentos é obrigatório. Clique em um evento para abrir sua ficha, editar os dados ou excluí-lo. Os compromissos ficam na tabela `visits` do banco local e são consultados apenas pelo servidor local.
 
 ## Portfólio local
+
+No envio e em **Editar foto**, o campo **Onde exibir a foto?** permite escolher **Portfólio** (carrossel e galeria) ou **01 / O primeiro olhar** (destaque da página inicial). As fotos anteriores permanecem no portfólio. O destaque aceita uma foto visível por vez: ao selecionar outra, a anterior é escondida e permanece na biblioteca. Para restaurá-la, edite e desmarque **Esconder foto**. Sem destaque visível, a página volta ao espaço reservado. A imagem de destaque preenche o quadro com recorte central; confira o enquadramento no celular. Os cards indicam destino e visibilidade.
 
 Use **Editar foto** na biblioteca para alterar título, descrição ou substituir a imagem. **Esconder foto** retira a imagem da home, da galeria e do endereço público do arquivo, mantendo-a no painel. Desmarque para exibir novamente. **Excluir foto** abre uma confirmação e remove o cadastro e o arquivo; substituir a imagem também remove o arquivo anterior.
 

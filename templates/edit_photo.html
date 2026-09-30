@@ -10,6 +10,7 @@
   <img class="photo-edit-preview" src="/admin/portfolio/imagens/{{ photo.filename }}" alt="{{ photo.title }}">
   <form class="portfolio-form" method="post" enctype="multipart/form-data">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% set selected_placement = photo.placement %}{% include 'photo_placement.html' %}
     <div class="field"><label for="title">Título</label><input id="title" name="title" maxlength="120" required value="{{ photo.title }}"></div>
     <div class="field"><label for="description">Descrição</label><textarea id="description" name="description" maxlength="500" rows="4">{{ photo.description }}</textarea></div>
     <div class="field"><label for="image">Substituir foto <span>(opcional · JPEG, PNG ou WebP)</span></label><input id="image" name="image" type="file" accept="image/jpeg,image/png,image/webp"><p class="dashboard-note">Deixe vazio para manter a imagem atual. Ao substituir, o arquivo anterior será removido.</p></div>

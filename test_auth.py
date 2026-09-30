@@ -75,7 +75,7 @@ class AdminPanelTests(unittest.TestCase):
         self.client.get('/admin/')
         today = datetime.now(ZoneInfo('America/Sao_Paulo')).date()
         for day in [today, today + timedelta(days=1)]:
-            result = self.client.post('/admin/visitas', data=dict(csrf_token=self.csrf(), client='Reunião', visit_date=day.isoformat(), visit_time='00:00', visit_type='reuniao'))
+            result = self.client.post('/admin/visitas', data=dict(csrf_token=self.csrf(), client='Reunião', visit_date=day.isoformat(), visit_time='07:00', visit_type='reuniao'))
             self.assertEqual(result.status_code, 302)
 
     def database(self):
@@ -86,6 +86,38 @@ class AdminPanelTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b'admin@example.test', response.data)
         self.assertIn('no-store', response.headers['Cache-Control'])
+
+    def test_photo_placement_and_hero_replacement(self):
+        def upload(title, placement):
+            return self.client.post('/admin/portfolio/imagens', data={
+                'csrf_token': self.csrf(), 'title': title, 'placement': placement,
+                'image': (BytesIO(b'\xff\xd8\xff\xe0test'), 'foto.jpg'),
+            })
+        self.assertEqual(upload('Galeria teste', 'portfolio').status_code, 302)
+        self.assertEqual(upload('Destaque primeiro', 'hero').status_code, 302)
+        self.assertIn('Destaque primeiro', self.client.get('/').text)
+        self.assertNotIn('Destaque primeiro', self.client.get('/portfolio').text)
+        self.assertIn('Galeria teste', self.client.get('/portfolio').text)
+        self.assertEqual(upload('Destaque novo', 'hero').status_code, 302)
+        with self.database() as db:
+            old_id, old_file, hidden = db.execute("SELECT id, filename, hidden FROM portfolio_images WHERE title='Destaque primeiro'").fetchone()
+            new_id = db.execute("SELECT id FROM portfolio_images WHERE title='Destaque novo'").fetchone()[0]
+        self.assertEqual(hidden, 1)
+        self.assertEqual(self.client.get('/portfolio/imagens/' + old_file).status_code, 404)
+        self.assertIn('Destaque primeiro', self.client.get('/admin/portfolio').text)
+        self.assertNotIn('Destaque primeiro', self.client.get('/').text)
+        self.assertEqual(upload('Inválido', 'other').status_code, 400)
+        edit = dict(csrf_token=self.csrf(), title='Destaque novo', description='', placement='portfolio')
+        self.assertEqual(self.client.post(f'/admin/portfolio/{new_id}/editar', data=edit).status_code, 303)
+        self.assertIn('Destaque novo', self.client.get('/portfolio').text)
+        self.assertIn('Sua próxima imagem de destaque.', self.client.get('/').text)
+        edit.update(title='Restaurada', placement='hero')
+        self.assertEqual(self.client.post(f'/admin/portfolio/{old_id}/editar', data=edit).status_code, 303)
+        self.assertIn('Restaurada', self.client.get('/').text)
+        self.assertNotIn('Restaurada', self.client.get('/portfolio').text)
+        edit['hidden'] = '1'
+        self.client.post(f'/admin/portfolio/{old_id}/editar', data=edit)
+        self.assertIn('Sua próxima imagem de destaque.', self.client.get('/').text)
 
     def test_portfolio_menu_and_image_upload(self):
         dashboard = self.client.get('/admin/')
@@ -242,20 +274,86 @@ class AdminPanelTests(unittest.TestCase):
         self.assertEqual(len(self.mailbox), sent_before)
         self.assertEqual(visitor.get('/admin/').location, '/admin/login')
 
-    def test_login_does_not_block_after_repeated_wrong_passwords(self):
+    def test_login_blocks_five_failures_for_fifteen_minutes(self):
+        clock = [1000000.0]
+        self.app.config['NOW'] = lambda: clock[0]
         visitor = self.app.test_client()
         visitor.get('/admin/login')
-        for _ in range(6):
+        for attempt in range(5):
             response = visitor.post('/admin/login', data={
                 'csrf_token': self.csrf(visitor), 'email': 'admin@example.test', 'password': 'senha-incorreta',
             })
-            self.assertEqual(response.status_code, 401)
-            self.assertNotIn('Muitas tentativas', response.text)
+            self.assertEqual(response.status_code, 401 if attempt < 4 else 429)
+        for elapsed in (0, 899):
+            clock[0] = 1000000.0 + elapsed
+            self.assertEqual(visitor.post('/admin/login', data={
+                'csrf_token': self.csrf(visitor), 'email': 'ADMIN@example.test', 'password': self.password,
+            }).status_code, 429)
+        clock[0] = 1000900.0
         correct = visitor.post('/admin/login', data={
             'csrf_token': self.csrf(visitor), 'email': 'admin@example.test', 'password': self.password,
         })
         self.assertEqual(correct.status_code, 303)
         self.assertEqual(correct.location, '/admin/verificar')
+
+    def test_admin_reset_link_is_protected_single_use_and_resets_password(self):
+        with self.database() as db:
+            user_id = db.execute('SELECT id FROM users').fetchone()[0]
+        path = f'/admin/usuarios/{user_id}/enviar-reset'
+        visitor = self.app.test_client()
+        self.assertEqual(visitor.post(path).status_code, 302)
+        self.assertEqual(self.client.post(path, data={'csrf_token': 'wrong'}).status_code, 400)
+        response = self.client.post(path, data={'csrf_token': self.csrf()})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('Link de redefinição enviado', response.text)
+        email, link = self.mailbox[-1]
+        self.assertEqual(email, 'admin@example.test')
+        self.assertIn('/admin/redefinir-link?token=', link)
+        opened = visitor.get(link)
+        self.assertEqual(opened.status_code, 303)
+        self.assertNotIn('token=', opened.location)
+        self.assertNotIn('name="code"', visitor.get(opened.location).text)
+        data = dict(csrf_token=self.csrf(visitor), password='nova-senha-123', password_confirmation='nova-senha-123')
+        self.assertEqual(visitor.post('/admin/redefinir-link', data={**data, 'password': 'curta'}).status_code, 400)
+        self.assertEqual(visitor.post('/admin/redefinir-link', data=data).status_code, 303)
+        self.assertEqual(visitor.get(link).status_code, 400)
+        self.assertEqual(self.client.get('/admin/').status_code, 302)
+        visitor.get('/admin/login')
+        self.assertEqual(visitor.post('/admin/login', data={'csrf_token': self.csrf(visitor), 'email': email, 'password': 'nova-senha-123'}).status_code, 303)
+
+    def test_admin_reset_link_expires_and_failed_email_is_not_success(self):
+        with self.database() as db:
+            user_id = db.execute('SELECT id FROM users').fetchone()[0]
+        path = f'/admin/usuarios/{user_id}/enviar-reset'
+        self.client.post(path, data={'csrf_token': self.csrf()})
+        link = self.mailbox[-1][1]
+        current = self.app.config['NOW']()
+        self.app.config['NOW'] = lambda: current + 601
+        self.assertEqual(self.app.test_client().get(link).status_code, 400)
+        self.app.config['SEND_CODE'] = lambda *_: (_ for _ in ()).throw(smtplib.SMTPException('test failure'))
+        self.assertEqual(self.client.post(path, data={'csrf_token': self.csrf()}).status_code, 503)
+
+    def test_reset_button_sends_to_other_saved_user_via_smtp(self):
+        with self.database() as db:
+            db.execute("INSERT INTO users (first_name,last_name,email,password_hash,city,created_at) VALUES ('Outra','Pessoa','outra@example.test',?,'Campinas','2026-09-30')", (generate_password_hash('senha-outra-123'),))
+            db.commit()
+            user_id, original_hash = db.execute("SELECT id,password_hash FROM users WHERE email='outra@example.test'").fetchone()
+        page = self.client.get(f'/admin/usuarios/{user_id}/editar')
+        self.assertIn(f'action="/admin/usuarios/{user_id}/enviar-reset"', page.text)
+        self.assertIn('Enviar para: <strong>outra@example.test</strong>', page.text)
+        self.app.config.update(SEND_CODE=None, SMTP=dict(host='smtp.example.test', port=465,
+            username='test', password='fake-test-only', sender='envio@example.test', security='ssl'))
+        with patch('server.smtplib.SMTP_SSL') as transport:
+            response = self.client.post(f'/admin/usuarios/{user_id}/enviar-reset', data={
+                'csrf_token': self.csrf(), 'email': 'intruso@example.test'})
+            self.assertEqual(response.status_code, 200)
+            message = transport.return_value.__enter__.return_value.send_message.call_args.args[0]
+            self.assertEqual(message['To'], 'outra@example.test')
+            self.assertEqual(message['Subject'], 'Redefina sua senha — Clique no Prato')
+            self.assertIn('/admin/redefinir-link?token=', message.get_content())
+        self.assertEqual(self.client.get('/admin/').status_code, 200)
+        with self.database() as db:
+            self.assertEqual(db.execute('SELECT password_hash FROM users WHERE id=?', (user_id,)).fetchone()[0], original_hash)
 
     def test_gmail_authentication_failure_explains_app_password(self):
         visitor = self.app.test_client()
@@ -463,6 +561,30 @@ class AdminPanelTests(unittest.TestCase):
         })
         self.assertEqual(response.status_code, 400)
         self.assertIn('data e um horário válidos', response.text)
+
+    def test_event_author_is_authenticated_user_and_survives_edits(self):
+        for kind in ('reuniao', 'ensaio'):
+            payload = dict(csrf_token=self.csrf(), client='Autoria ' + kind,
+                           visit_date='2027-10-17', visit_time='10:30', visit_type=kind,
+                           equipment='Canon R10', created_by_name='Nome forjado', created_by_id='999')
+            self.assertEqual(self.client.post('/admin/visitas', data=payload).status_code, 302)
+            with self.database() as db:
+                visit_id, author_id, author_name = db.execute('SELECT id, created_by_id, created_by_name FROM visits ORDER BY id DESC LIMIT 1').fetchone()
+                expected_id = db.execute("SELECT id FROM users WHERE email='admin@example.test'").fetchone()[0]
+            self.assertEqual(author_id, expected_id)
+            self.assertEqual(author_name, 'Admin Teste')
+            self.assertIn('Cadastrado por: Admin Teste', self.client.get(f'/admin/visitas/{visit_id}').text)
+            self.assertIn('Cadastrado por: Admin Teste', self.client.get('/admin/?month=2027-10').text)
+            self.assertEqual(self.client.post(f'/admin/visitas/{visit_id}/editar', data=payload).status_code, 302)
+            with self.database() as db:
+                self.assertEqual(db.execute('SELECT created_by_name FROM visits WHERE id=?', (visit_id,)).fetchone()[0], 'Admin Teste')
+
+    def test_legacy_event_does_not_invent_author(self):
+        with self.database() as db:
+            db.execute("INSERT INTO visits (visit_date, visit_time, client, created_at) VALUES ('2027-10-17', '10:30', 'Antigo', '2026-09-01')")
+            db.commit()
+            visit_id = db.execute('SELECT id FROM visits').fetchone()[0]
+        self.assertIn('Não registrado (evento anterior a este recurso)', self.client.get(f'/admin/visitas/{visit_id}').text)
 
     def test_calendar_requires_equipment_for_ensaios_and_five_minute_steps(self):
         self.client.get('/admin/')

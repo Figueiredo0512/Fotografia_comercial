@@ -111,6 +111,13 @@ def create_app(test_config=None):
                 bucket TEXT NOT NULL, at REAL NOT NULL
             );
             CREATE INDEX IF NOT EXISTS attempts_lookup ON attempts(bucket, at);
+            CREATE TABLE IF NOT EXISTS login_locks (
+                email TEXT PRIMARY KEY, failures INTEGER NOT NULL DEFAULT 0,
+                blocked_until REAL NOT NULL DEFAULT 0
+            );
+            CREATE TABLE IF NOT EXISTS reset_links (
+                token_hash TEXT PRIMARY KEY, email TEXT NOT NULL, expires REAL NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS visits (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 visit_date TEXT NOT NULL,
@@ -143,10 +150,16 @@ def create_app(test_config=None):
             db.execute("ALTER TABLE sessions ADD COLUMN email TEXT NOT NULL DEFAULT ''")
         if 'hidden' not in photo_columns:
             db.execute('ALTER TABLE portfolio_images ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0')
+        if 'placement' not in photo_columns:
+            db.execute("ALTER TABLE portfolio_images ADD COLUMN placement TEXT NOT NULL DEFAULT 'portfolio'")
         if 'visit_type' not in columns:
             db.execute("ALTER TABLE visits ADD COLUMN visit_type TEXT NOT NULL DEFAULT 'reuniao'")
         if 'equipment' not in columns:
             db.execute("ALTER TABLE visits ADD COLUMN equipment TEXT NOT NULL DEFAULT ''")
+        if 'created_by_id' not in columns:
+            db.execute('ALTER TABLE visits ADD COLUMN created_by_id INTEGER')
+        if 'created_by_name' not in columns:
+            db.execute("ALTER TABLE visits ADD COLUMN created_by_name TEXT NOT NULL DEFAULT ''")
         legacy_admin = db.execute('SELECT email, password_hash FROM admin WHERE id = 1').fetchone()
         if legacy_admin:
             db.execute(
@@ -211,7 +224,7 @@ def create_app(test_config=None):
             g.admin_authenticated = authenticated()
             public_endpoints = {
                 'asset', 'login', 'verify', 'resend',
-                'forgot_password', 'reset_password',
+                'forgot_password', 'reset_password', 'reset_link',
             }
             if request.endpoint not in public_endpoints and not g.admin_authenticated:
                 return redirect(url_for('login'))
@@ -265,12 +278,15 @@ def create_app(test_config=None):
         message['From'] = config['sender']
         message['To'] = email
         action = 'redefinição de senha' if purpose == 'reset' else 'acesso'
-        message['Subject'] = f'Seu código de {action} — Fotografia gastronômica'
+        message['Subject'] = f'Seu código de {action} — Clique no Prato'
         message.set_content(
             f'Seu código de {action} é: {code}\n\n'
             'Ele expira em até 10 minutos e só pode ser usado uma vez.\n'
             'Se você não solicitou este acesso, ignore esta mensagem.\n'
         )
+        if purpose == 'reset_link':
+            message.replace_header('Subject', 'Redefina sua senha — Clique no Prato')
+            message.set_content(f'Um administrador solicitou a redefinição da sua senha.\n\n{code}\n\nO link expira em 10 minutos e só pode ser usado uma vez. Se não reconhecer a solicitação, ignore este e-mail. Sua senha permanece inalterada.')
         context = ssl.create_default_context()
         smtp_password = config['password']
         if str(config.get('host', '')).lower() == 'smtp.gmail.com':
@@ -311,14 +327,15 @@ def create_app(test_config=None):
     @app.get('/index.html')
     def home():
         images = db().execute(
-            'SELECT filename, title, description FROM portfolio_images WHERE hidden = 0 ORDER BY id DESC LIMIT 5'
+            "SELECT filename, title, description FROM portfolio_images WHERE hidden = 0 AND placement = 'portfolio' ORDER BY id DESC LIMIT 5"
         ).fetchall()
-        return render_template_string((ROOT / 'index.html').read_text(), portfolio_images=images)
+        hero = db().execute("SELECT filename, title, description FROM portfolio_images WHERE hidden = 0 AND placement = 'hero' ORDER BY id DESC LIMIT 1").fetchone()
+        return render_template_string((ROOT / 'index.html').read_text(), portfolio_images=images, hero_image=hero)
 
     @app.get('/portfolio')
     def public_portfolio():
         images = db().execute(
-            'SELECT filename, title, description FROM portfolio_images WHERE hidden = 0 ORDER BY id DESC'
+            "SELECT filename, title, description FROM portfolio_images WHERE hidden = 0 AND placement = 'portfolio' ORDER BY id DESC"
         ).fetchall()
         return render_template('public_portfolio.html', images=images)
 
@@ -345,9 +362,21 @@ def create_app(test_config=None):
         if len(email) > 254 or len(password) > 256:
             return login_page('E-mail ou senha incorretos.', 401, email)
         user = db().execute('SELECT * FROM users WHERE email = ?', (email,)).fetchone()
-        correct = check_password_hash(user['password_hash'] if user else dummy_hash, password)
-        if not user or not correct:
-            return login_page('E-mail ou senha incorretos.', 401, email)
+        with db() as connection:
+            connection.execute('BEGIN IMMEDIATE')
+            lock = connection.execute('SELECT failures, blocked_until FROM login_locks WHERE email=?', (email,)).fetchone()
+            if lock and lock['blocked_until'] > now():
+                return login_page('Acesso bloqueado após 5 senhas incorretas. Tente novamente em 15 minutos após o bloqueio.', 429, email)
+            failures = lock['failures'] if lock and not lock['blocked_until'] else 0
+            correct = check_password_hash(user['password_hash'] if user else dummy_hash, password)
+            if not user or not correct:
+                failures += 1
+                connection.execute('INSERT OR REPLACE INTO login_locks VALUES (?, ?, ?)',
+                                   (email, failures, now() + 900 if failures >= 5 else 0))
+                if failures >= 5:
+                    return login_page('Você errou a senha 5 vezes. Tente novamente em 15 minutos.', 429, email)
+                return login_page('E-mail ou senha incorretos.', 401, email)
+            connection.execute('DELETE FROM login_locks WHERE email=?', (email,))
         challenge = secrets.token_urlsafe(32)
         code = f'{secrets.randbelow(1000000):06d}'
         try:
@@ -463,6 +492,8 @@ def create_app(test_config=None):
             connection.execute('UPDATE admin SET password_hash = ? WHERE email = ?', (password_hash, row['email']))
             connection.execute('DELETE FROM sessions WHERE email = ?', (row['email'],))
             connection.execute('DELETE FROM challenges WHERE email = ?', (row['email'],))
+            connection.execute('DELETE FROM reset_links WHERE email = ?', (row['email'],))
+            connection.execute('DELETE FROM login_locks WHERE email = ?', (row['email'],))
         session.clear()
         csrf()
         return redirect(url_for('login', reset='1'), code=303)
@@ -569,7 +600,7 @@ def create_app(test_config=None):
         ).fetchone()
         if not user:
             abort(404)
-        values = dict(user)
+        values = dict(user, saved_email=user['email'])
         if request.method == 'GET':
             return render_template('edit_user.html', user=values)
         for field in ('first_name', 'last_name', 'email', 'city'):
@@ -589,6 +620,8 @@ def create_app(test_config=None):
                     connection.execute('UPDATE admin SET email=? WHERE email=?', (values['email'], user['email']))
                     connection.execute('DELETE FROM challenges WHERE email=?', (user['email'],))
                     connection.execute('DELETE FROM sessions WHERE email=?', (user['email'],))
+                    connection.execute('DELETE FROM reset_links WHERE email=?', (user['email'],))
+                    connection.execute('DELETE FROM login_locks WHERE email=?', (user['email'],))
         except sqlite3.IntegrityError:
             return render_template('edit_user.html', user=values,
                                    error='Já existe uma conta com este e-mail.'), 409
@@ -605,11 +638,61 @@ def create_app(test_config=None):
         session.clear()
         return redirect(url_for('login'), code=303)
 
+    @app.post('/admin/usuarios/<int:user_id>/enviar-reset')
+    def send_user_reset(user_id):
+        user = db().execute('SELECT * FROM users WHERE id=?', (user_id,)).fetchone()
+        if not user:
+            abort(404)
+        if not password_reset_limit(user['email']):
+            return render_template('edit_user.html', user=user, error='Aguarde 15 minutos antes de solicitar outro link.'), 429
+        token = secrets.token_urlsafe(32)
+        base = ('https://' + app.config['TRUSTED_HOSTS'][0]) if app.config['PRODUCTION'] else request.host_url.rstrip('/')
+        link = base + url_for('reset_link') + '?token=' + token
+        try:
+            with db() as connection:
+                connection.execute('DELETE FROM reset_links WHERE email=? OR expires<=?', (user['email'], now()))
+                connection.execute('INSERT INTO reset_links VALUES (?, ?, ?)', (digest(token), user['email'], now() + CODE_LIFETIME))
+                send_code(user['email'], link, purpose='reset_link')
+        except (smtplib.SMTPException, OSError, RuntimeError, ValueError, json.JSONDecodeError) as error:
+            app.logger.warning('Falha no envio do link: %s.', type(error).__name__)
+            return render_template('edit_user.html', user=user, error=email_delivery_error(error)), 503
+        return render_template('edit_user.html', user=user, message='Link de redefinição enviado ao e-mail cadastrado. Válido por 10 minutos.')
+
+    @app.route('/admin/redefinir-link', methods=['GET', 'POST'])
+    def reset_link():
+        token = request.args.get('token') if request.method == 'GET' else None
+        token_hash = digest(token) if token else session.get('pending_link', '')
+        with db() as connection:
+            connection.execute('BEGIN IMMEDIATE')
+            row = connection.execute('SELECT * FROM reset_links WHERE token_hash=? AND expires>?', (token_hash, now())).fetchone()
+            if not row:
+                session.pop('pending_link', None)
+                return render_template('error.html', message='Link inválido, expirado ou já utilizado. Solicite um novo link.'), 400
+            if token:
+                session.clear()
+                session['pending_link'] = token_hash
+                csrf()
+                response = redirect(url_for('reset_link'), code=303)
+                response.headers['Referrer-Policy'] = 'no-referrer'
+                return response
+            if request.method == 'GET':
+                return render_template('reset_password.html', via_link=True)
+            password = request.form.get('password', '')
+            if not 8 <= len(password) <= 256 or password != request.form.get('password_confirmation', ''):
+                return render_template('reset_password.html', via_link=True, error='As senhas precisam ser iguais e ter pelo menos 8 caracteres.'), 400
+            hashed = generate_password_hash(password, method='scrypt')
+            connection.execute('UPDATE users SET password_hash=? WHERE email=?', (hashed, row['email']))
+            connection.execute('UPDATE admin SET password_hash=? WHERE email=?', (hashed, row['email']))
+            for table in ('sessions', 'challenges', 'reset_links', 'login_locks'):
+                connection.execute(f'DELETE FROM {table} WHERE email=?', (row['email'],))
+        session.clear()
+        return redirect(url_for('login', reset='1'), code=303)
+
     def portfolio_page(error=None, status=200):
         images = db().execute(
-            'SELECT id, filename, title, description, created_at, hidden FROM portfolio_images ORDER BY id DESC'
+            'SELECT id, filename, title, description, created_at, hidden, placement FROM portfolio_images ORDER BY id DESC'
         ).fetchall()
-        message = 'Foto adicionada ao portfólio.' if request.args.get('saved') == '1' else None
+        message = 'Foto adicionada ao local escolhido.' if request.args.get('saved') == '1' else None
         if request.args.get('deleted') == '1':
             message = 'Foto excluída.'
         return render_template('portfolio.html', images=images, message=message, error=error), status
@@ -621,6 +704,9 @@ def create_app(test_config=None):
     @app.post('/admin/portfolio/imagens')
     def add_portfolio_image():
         upload = request.files.get('image')
+        placement = request.form.get('placement', 'portfolio')
+        if placement not in ('portfolio', 'hero'):
+            return portfolio_page('Escolha um local válido para a foto.', 400)
         title = request.form.get('title', '').strip()
         description = request.form.get('description', '').strip()
         if not upload or not upload.filename or not title or len(title) > 120 or len(description) > 500:
@@ -632,9 +718,11 @@ def create_app(test_config=None):
         target = portfolio_dir / filename
         try:
             with db() as connection:
+                if placement == 'hero':
+                    connection.execute("UPDATE portfolio_images SET hidden = 1 WHERE placement = 'hero'")
                 connection.execute(
-                    'INSERT INTO portfolio_images (filename, title, description, mime_type, created_at) VALUES (?, ?, ?, ?, ?)',
-                    (filename, title, description, mime_type, datetime.now().isoformat(timespec='seconds')),
+                    'INSERT INTO portfolio_images (filename, title, description, mime_type, created_at, placement) VALUES (?, ?, ?, ?, ?, ?)',
+                    (filename, title, description, mime_type, datetime.now().isoformat(timespec='seconds'), placement),
                 )
         except sqlite3.Error:
             target.unlink(missing_ok=True)
@@ -672,7 +760,10 @@ def create_app(test_config=None):
             return render_template('edit_photo.html', photo=photo)
         values = dict(photo, title=request.form.get('title', '').strip(),
                       description=request.form.get('description', '').strip(),
+                      placement=request.form.get('placement', photo['placement']),
                       hidden=int(request.form.get('hidden') == '1'))
+        if values['placement'] not in ('portfolio', 'hero'):
+            return render_template('edit_photo.html', photo=values, error='Escolha um local válido para a foto.'), 400
         if not values['title'] or len(values['title']) > 120 or len(values['description']) > 500:
             return render_template('edit_photo.html', photo=values, error='Informe um título de até 120 caracteres e uma descrição de até 500.'), 400
         upload = request.files.get('image')
@@ -685,8 +776,10 @@ def create_app(test_config=None):
         filename, mime = replacement or (photo['filename'], photo['mime_type'])
         try:
             with db() as connection:
-                connection.execute('UPDATE portfolio_images SET title=?, description=?, hidden=?, filename=?, mime_type=? WHERE id=?',
-                                   (values['title'], values['description'], values['hidden'], filename, mime, image_id))
+                if values['placement'] == 'hero' and not values['hidden']:
+                    connection.execute("UPDATE portfolio_images SET hidden = 1 WHERE placement = 'hero' AND id != ?", (image_id,))
+                connection.execute('UPDATE portfolio_images SET title=?, description=?, hidden=?, filename=?, mime_type=?, placement=? WHERE id=?',
+                                   (values['title'], values['description'], values['hidden'], filename, mime, values['placement'], image_id))
         except sqlite3.Error:
             if replacement:
                 (portfolio_dir / filename).unlink(missing_ok=True)
@@ -726,7 +819,7 @@ def create_app(test_config=None):
         previous_month = (month_date.replace(day=1) - timedelta(days=1)).replace(day=1)
         next_month = (month_date.replace(day=28) + timedelta(days=4)).replace(day=1)
         rows = db().execute(
-            'SELECT id, visit_date, visit_time, client, notes, visit_type, equipment FROM visits WHERE visit_date LIKE ? ORDER BY visit_date, visit_time, id',
+            'SELECT id, visit_date, visit_time, client, notes, visit_type, equipment, created_by_name FROM visits WHERE visit_date LIKE ? ORDER BY visit_date, visit_time, id',
             (f'{month_key}%',),
         ).fetchall()
         visits_by_date = {}
@@ -773,6 +866,8 @@ def create_app(test_config=None):
                 raise ValueError
         except ValueError:
             return None, 'Informe uma data e um horário válidos.'
+        if parsed_time.hour < 7:
+            return None, 'Escolha um horário entre 07:00 e 23:55, com minutos de 5 em 5.'
         if payload['visit_type'] not in {'reuniao', 'ensaio'}:
             return None, 'Escolha se a visita será uma reunião ou um ensaio.'
         if payload['visit_type'] == 'ensaio' and not payload['equipment']:
@@ -798,10 +893,14 @@ def create_app(test_config=None):
         if (payload['parsed_date'] < today_local
                 and request.form.get('confirm_past_date') != payload['parsed_date'].isoformat()):
             return render_template('confirm_past_visit.html', visit=payload)
+        author = db().execute('SELECT id, first_name, last_name FROM users WHERE email = ?', (g.user_email,)).fetchone()
+        if author is None:
+            abort(403)
+        author_name = ' '.join(part for part in (author['first_name'], author['last_name']) if part).strip()
         with db() as connection:
             connection.execute(
-                'INSERT INTO visits (visit_date, visit_time, client, notes, visit_type, equipment, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-                (payload['visit_date'], payload['visit_time'], payload['client'], payload['notes'], payload['visit_type'], payload['equipment'], datetime.now().isoformat(timespec='seconds')),
+                'INSERT INTO visits (visit_date, visit_time, client, notes, visit_type, equipment, created_at, created_by_id, created_by_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                (payload['visit_date'], payload['visit_time'], payload['client'], payload['notes'], payload['visit_type'], payload['equipment'], datetime.now().isoformat(timespec='seconds'), author['id'], author_name),
             )
         return redirect(f'/admin/?month={payload["parsed_date"].strftime("%Y-%m")}&saved=1')
 
@@ -819,7 +918,7 @@ def create_app(test_config=None):
             abort(404)
         payload, error = visit_payload()
         if error:
-            return render_template('visit.html', visit={**dict(existing), **request.form}, error=error), 400
+            return render_template('visit.html', visit={**dict(existing), **request.form, 'created_by_name': existing['created_by_name']}, error=error), 400
         with db() as connection:
             connection.execute(
                 'UPDATE visits SET visit_date = ?, visit_time = ?, client = ?, notes = ?, visit_type = ?, equipment = ? WHERE id = ?',
