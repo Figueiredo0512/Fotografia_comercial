@@ -149,6 +149,10 @@ def create_app(test_config=None):
             db.execute("ALTER TABLE visits ADD COLUMN visit_type TEXT NOT NULL DEFAULT 'reuniao'")
         if 'equipment' not in columns:
             db.execute("ALTER TABLE visits ADD COLUMN equipment TEXT NOT NULL DEFAULT ''")
+        if 'created_by_id' not in columns:
+            db.execute('ALTER TABLE visits ADD COLUMN created_by_id INTEGER')
+        if 'created_by_name' not in columns:
+            db.execute("ALTER TABLE visits ADD COLUMN created_by_name TEXT NOT NULL DEFAULT ''")
         legacy_admin = db.execute('SELECT email, password_hash FROM admin WHERE id = 1').fetchone()
         if legacy_admin:
             db.execute(
@@ -739,7 +743,7 @@ def create_app(test_config=None):
         previous_month = (month_date.replace(day=1) - timedelta(days=1)).replace(day=1)
         next_month = (month_date.replace(day=28) + timedelta(days=4)).replace(day=1)
         rows = db().execute(
-            'SELECT id, visit_date, visit_time, client, notes, visit_type, equipment FROM visits WHERE visit_date LIKE ? ORDER BY visit_date, visit_time, id',
+            'SELECT id, visit_date, visit_time, client, notes, visit_type, equipment, created_by_name FROM visits WHERE visit_date LIKE ? ORDER BY visit_date, visit_time, id',
             (f'{month_key}%',),
         ).fetchall()
         visits_by_date = {}
@@ -811,10 +815,14 @@ def create_app(test_config=None):
         if (payload['parsed_date'] < today_local
                 and request.form.get('confirm_past_date') != payload['parsed_date'].isoformat()):
             return render_template('confirm_past_visit.html', visit=payload)
+        author = db().execute('SELECT id, first_name, last_name FROM users WHERE email = ?', (g.user_email,)).fetchone()
+        if author is None:
+            abort(403)
+        author_name = ' '.join(part for part in (author['first_name'], author['last_name']) if part).strip()
         with db() as connection:
             connection.execute(
-                'INSERT INTO visits (visit_date, visit_time, client, notes, visit_type, equipment, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-                (payload['visit_date'], payload['visit_time'], payload['client'], payload['notes'], payload['visit_type'], payload['equipment'], datetime.now().isoformat(timespec='seconds')),
+                'INSERT INTO visits (visit_date, visit_time, client, notes, visit_type, equipment, created_at, created_by_id, created_by_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                (payload['visit_date'], payload['visit_time'], payload['client'], payload['notes'], payload['visit_type'], payload['equipment'], datetime.now().isoformat(timespec='seconds'), author['id'], author_name),
             )
         return redirect(f'/admin/?month={payload["parsed_date"].strftime("%Y-%m")}&saved=1')
 
@@ -832,7 +840,7 @@ def create_app(test_config=None):
             abort(404)
         payload, error = visit_payload()
         if error:
-            return render_template('visit.html', visit={**dict(existing), **request.form}, error=error), 400
+            return render_template('visit.html', visit={**dict(existing), **request.form, 'created_by_name': existing['created_by_name']}, error=error), 400
         with db() as connection:
             connection.execute(
                 'UPDATE visits SET visit_date = ?, visit_time = ?, client = ?, notes = ?, visit_type = ?, equipment = ? WHERE id = ?',

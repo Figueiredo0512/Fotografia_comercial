@@ -36,6 +36,8 @@ Banco, fotos, chave de sessão e configuração SMTP ficam em **`.fotografia-adm
 
 ## Agenda de visitas
 
+Novos eventos registram automaticamente o ID e o nome completo da conta autenticada que confirmou o cadastro. **Cadastrado por** aparece no pop-up do calendário e na página de edição, tanto para reuniões quanto ensaios. O nome é preservado como histórico e não muda quando o evento ou o perfil são editados. Eventos anteriores mostram **Não registrado (evento anterior a este recurso)**; não atribuímos autoria retroativa.
+
 No painel, a seção **Agenda de visitas** mostra o mês selecionado e permite avançar ou voltar entre meses. O botão **Nova visita** abre um pop-up para escolher entre reunião e ensaio, registrar estabelecimento, data e horário em intervalos de cinco minutos. Em ensaios, o campo de equipamentos é obrigatório. Clique em um evento para abrir sua ficha, editar os dados ou excluí-lo. Os compromissos ficam na tabela `visits` do banco local e são consultados apenas pelo servidor local.
 
 ## Portfólio local

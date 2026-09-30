@@ -496,6 +496,30 @@ class AdminPanelTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn('data e um horário válidos', response.text)
 
+    def test_event_author_is_authenticated_user_and_survives_edits(self):
+        for kind in ('reuniao', 'ensaio'):
+            payload = dict(csrf_token=self.csrf(), client='Autoria ' + kind,
+                           visit_date='2027-10-17', visit_time='10:30', visit_type=kind,
+                           equipment='Canon R10', created_by_name='Nome forjado', created_by_id='999')
+            self.assertEqual(self.client.post('/admin/visitas', data=payload).status_code, 302)
+            with self.database() as db:
+                visit_id, author_id, author_name = db.execute('SELECT id, created_by_id, created_by_name FROM visits ORDER BY id DESC LIMIT 1').fetchone()
+                expected_id = db.execute("SELECT id FROM users WHERE email='admin@example.test'").fetchone()[0]
+            self.assertEqual(author_id, expected_id)
+            self.assertEqual(author_name, 'Admin Teste')
+            self.assertIn('Cadastrado por: Admin Teste', self.client.get(f'/admin/visitas/{visit_id}').text)
+            self.assertIn('Cadastrado por: Admin Teste', self.client.get('/admin/?month=2027-10').text)
+            self.assertEqual(self.client.post(f'/admin/visitas/{visit_id}/editar', data=payload).status_code, 302)
+            with self.database() as db:
+                self.assertEqual(db.execute('SELECT created_by_name FROM visits WHERE id=?', (visit_id,)).fetchone()[0], 'Admin Teste')
+
+    def test_legacy_event_does_not_invent_author(self):
+        with self.database() as db:
+            db.execute("INSERT INTO visits (visit_date, visit_time, client, created_at) VALUES ('2027-10-17', '10:30', 'Antigo', '2026-09-01')")
+            db.commit()
+            visit_id = db.execute('SELECT id FROM visits').fetchone()[0]
+        self.assertIn('Não registrado (evento anterior a este recurso)', self.client.get(f'/admin/visitas/{visit_id}').text)
+
     def test_calendar_requires_equipment_for_ensaios_and_five_minute_steps(self):
         self.client.get('/admin/')
         missing_equipment = self.client.post('/admin/visitas', data={

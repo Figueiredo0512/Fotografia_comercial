@@ -6,6 +6,7 @@
   <a class="return-link" href="/admin/?month={{ visit.visit_date[:7] }}">← Voltar ao calendário</a>
   <p class="eyebrow">EVENTO DA AGENDA</p>
   <h1 id="visit-title">{{ visit.client }}</h1>
+  <p class="dashboard-note">Cadastrado por: {{ visit.created_by_name or 'Não registrado (evento anterior a este recurso)' }}</p>
   {% if request.args.get('saved') == '1' %}<p class="message success" role="status">Evento atualizado.</p>{% endif %}
   {% if error %}<p class="message error" role="alert">{{ error }}</p>{% endif %}
   <form class="visit-form detail-form" method="post" action="/admin/visitas/{{ visit.id }}/editar">
