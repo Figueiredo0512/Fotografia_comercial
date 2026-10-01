@@ -414,12 +414,25 @@ def create_app(test_config=None):
         try:
             with db() as connection:
                 connection.execute('BEGIN IMMEDIATE')
-                connection.execute('DELETE FROM challenges WHERE email = ?', (user['email'],))
+                active = connection.execute(
+                    "SELECT id FROM challenges WHERE email = ? AND purpose = 'login' AND expires > ? AND attempts < ? ORDER BY last_send DESC LIMIT 1",
+                    (user['email'], now(), MAX_ATTEMPTS),
+                ).fetchone()
+                if active:
+                    session.clear()
+                    session['pending'] = active['id']
+                    csrf()
+                    return redirect(url_for('verify'), code=303)
+                connection.execute("DELETE FROM challenges WHERE email = ? AND purpose = 'login'", (user['email'],))
                 connection.execute(
-                    'INSERT INTO challenges (id, code_hash, expires, last_send, email) VALUES (?, ?, ?, ?, ?)',
+                    "INSERT INTO challenges (id, code_hash, expires, last_send, email, purpose) VALUES (?, ?, ?, ?, ?, 'login')",
                     (challenge, code_digest(challenge, code), now() + CODE_LIFETIME, now(), user['email']),
                 )
-                send_code(user['email'], code)
+                try:
+                    send_code(user['email'], code)
+                except Exception:
+                    connection.execute('DELETE FROM challenges WHERE id = ?', (challenge,))
+                    raise
         except (smtplib.SMTPException, OSError, RuntimeError, ValueError, json.JSONDecodeError) as error:
             app.logger.warning('Falha no envio do código de acesso: %s.', type(error).__name__)
             return login_page(email_delivery_error(error), 503, email)

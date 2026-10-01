@@ -377,6 +377,20 @@ class AdminPanelTests(unittest.TestCase):
         self.assertEqual(len(self.mailbox), sent_before)
         self.assertEqual(visitor.get('/admin/').location, '/admin/login')
 
+    def test_repeated_login_submission_reuses_active_mfa_and_sends_once(self):
+        visitor = self.app.test_client()
+        visitor.get('/admin/login')
+        data = {'csrf_token': self.csrf(visitor), 'email': 'admin@example.test', 'password': self.password}
+        sent_before = len(self.mailbox)
+        self.assertEqual(visitor.post('/admin/login', data=data).status_code, 303)
+        first_code = self.mailbox[-1][1]
+        self.assertEqual(len(self.mailbox), sent_before + 1)
+        data = {**data, 'csrf_token': self.csrf(visitor)}
+        self.assertEqual(visitor.post('/admin/login', data=data).status_code, 303)
+        self.assertEqual(len(self.mailbox), sent_before + 1)
+        self.assertEqual(visitor.get('/admin/verificar').status_code, 200)
+        self.assertEqual(visitor.post('/admin/verificar', data={'csrf_token': self.csrf(visitor), 'code': first_code}).status_code, 303)
+
     def test_login_blocks_five_failures_for_fifteen_minutes(self):
         clock = [1000000.0]
         self.app.config['NOW'] = lambda: clock[0]
