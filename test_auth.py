@@ -154,6 +154,42 @@ class AdminPanelTests(unittest.TestCase):
         self.assertIn(b'admin@example.test', response.data)
         self.assertIn('no-store', response.headers['Cache-Control'])
 
+    def test_photo_uploader_is_recorded_server_side_and_private(self):
+        for placement in ('portfolio', 'hero'):
+            self.client.get('/admin/portfolio')
+            response = self.client.post('/admin/portfolio/imagens', data={
+                'csrf_token': self.csrf(), 'title': 'Foto teste', 'placement': placement,
+                'uploaded_by_name': 'Nome forjado', 'uploaded_by_id': '999',
+                'image': (BytesIO(b'\xff\xd8\xff\xe0test'), 'foto.jpg'),
+            })
+            self.assertEqual(response.status_code, 302)
+        with self.database() as db:
+            self.assertEqual(db.execute('SELECT uploaded_by_id,uploaded_by_name FROM portfolio_images').fetchall(), [(1, 'Admin Teste'), (1, 'Admin Teste')])
+        self.assertIn('Enviada por: <strong>Admin Teste</strong>', self.client.get('/admin/portfolio').text)
+        for path in ('/', '/portfolio'):
+            public = self.app.test_client().get(path).text
+            self.assertNotIn('Admin Teste', public)
+            self.assertNotIn('Enviada por:', public)
+        with self.database() as db, db:
+            db.execute("UPDATE users SET first_name='Novo nome' WHERE id=1")
+        data = dict(csrf_token=self.csrf(), title='Título atualizado', description='Outra descrição', placement='portfolio')
+        self.assertEqual(self.client.post('/admin/portfolio/1/editar', data=data).status_code, 303)
+        with self.database() as db:
+            self.assertEqual(db.execute('SELECT uploaded_by_name FROM portfolio_images WHERE id=1').fetchone()[0], 'Admin Teste')
+        self.assertEqual(self.client.post('/admin/portfolio/1/editar', data={**data, 'image': (BytesIO(b'\xff\xd8\xff\xe0new'), 'nova.jpg')}).status_code, 303)
+        with self.database() as db:
+            self.assertEqual(db.execute('SELECT uploaded_by_name FROM portfolio_images WHERE id=1').fetchone()[0], 'Novo nome Teste')
+
+    def test_old_photos_have_no_invented_uploader(self):
+        with self.database() as db, db:
+            db.execute("INSERT INTO portfolio_images (filename,title,mime_type,created_at) VALUES ('old.jpg','Antiga','image/jpeg','2026-09-01')")
+            db.execute('ALTER TABLE portfolio_images DROP COLUMN uploaded_by_id')
+            db.execute('ALTER TABLE portfolio_images DROP COLUMN uploaded_by_name')
+        create_app({'TESTING':True,'SECRET_KEY':'test','DATA_DIR':self.directory.name})
+        with self.database() as db:
+            self.assertEqual(db.execute('SELECT uploaded_by_id,uploaded_by_name FROM portfolio_images').fetchone(), (None, ''))
+        self.assertIn('Usuário não registrado', self.client.get('/admin/portfolio').text)
+
     def test_photo_placement_and_hero_replacement(self):
         def upload(title, placement):
             return self.client.post('/admin/portfolio/imagens', data={

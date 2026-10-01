@@ -154,6 +154,10 @@ def create_app(test_config=None):
             db.execute('ALTER TABLE portfolio_images ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0')
         if 'placement' not in photo_columns:
             db.execute("ALTER TABLE portfolio_images ADD COLUMN placement TEXT NOT NULL DEFAULT 'portfolio'")
+        if 'uploaded_by_id' not in photo_columns:
+            db.execute('ALTER TABLE portfolio_images ADD COLUMN uploaded_by_id INTEGER')
+        if 'uploaded_by_name' not in photo_columns:
+            db.execute("ALTER TABLE portfolio_images ADD COLUMN uploaded_by_name TEXT NOT NULL DEFAULT ''")
         if 'visit_type' not in columns:
             db.execute("ALTER TABLE visits ADD COLUMN visit_type TEXT NOT NULL DEFAULT 'reuniao'")
         if 'equipment' not in columns:
@@ -751,7 +755,7 @@ def create_app(test_config=None):
 
     def portfolio_page(error=None, status=200):
         images = db().execute(
-            'SELECT id, filename, title, description, created_at, hidden, placement FROM portfolio_images ORDER BY id DESC'
+            'SELECT id, filename, title, description, created_at, hidden, placement, uploaded_by_name FROM portfolio_images ORDER BY id DESC'
         ).fetchall()
         message = 'Foto adicionada ao local escolhido.' if request.args.get('saved') == '1' else None
         if request.args.get('deleted') == '1':
@@ -782,8 +786,10 @@ def create_app(test_config=None):
                 if placement == 'hero':
                     connection.execute("UPDATE portfolio_images SET hidden = 1 WHERE placement = 'hero'")
                 connection.execute(
-                    'INSERT INTO portfolio_images (filename, title, description, mime_type, created_at, placement) VALUES (?, ?, ?, ?, ?, ?)',
-                    (filename, title, description, mime_type, datetime.now().isoformat(timespec='seconds'), placement),
+                    '''INSERT INTO portfolio_images (filename, title, description, mime_type, created_at, placement, uploaded_by_id, uploaded_by_name)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+                    (filename, title, description, mime_type, datetime.now().isoformat(timespec='seconds'), placement,
+                     g.current_user['id'], f"{g.current_user['first_name']} {g.current_user['last_name']}".strip()),
                 )
         except sqlite3.Error:
             target.unlink(missing_ok=True)
@@ -841,6 +847,9 @@ def create_app(test_config=None):
                     connection.execute("UPDATE portfolio_images SET hidden = 1 WHERE placement = 'hero' AND id != ?", (image_id,))
                 connection.execute('UPDATE portfolio_images SET title=?, description=?, hidden=?, filename=?, mime_type=?, placement=? WHERE id=?',
                                    (values['title'], values['description'], values['hidden'], filename, mime, values['placement'], image_id))
+                if replacement:
+                    connection.execute('UPDATE portfolio_images SET uploaded_by_id=?, uploaded_by_name=? WHERE id=?',
+                                       (g.current_user['id'], f"{g.current_user['first_name']} {g.current_user['last_name']}".strip(), image_id))
         except sqlite3.Error:
             if replacement:
                 (portfolio_dir / filename).unlink(missing_ok=True)
