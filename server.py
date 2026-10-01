@@ -84,6 +84,8 @@ def create_app(test_config=None):
     portfolio_dir = data / 'portfolio'
     portfolio_dir.mkdir(mode=0o700, exist_ok=True)
     os.chmod(portfolio_dir, 0o700)
+    avatar_dir = data / 'avatars'
+    avatar_dir.mkdir(mode=0o700, exist_ok=True)
     with closing(sqlite3.connect(db_path)) as db, db:
         db.executescript('''
             CREATE TABLE IF NOT EXISTS admin (
@@ -168,6 +170,16 @@ def create_app(test_config=None):
                    VALUES (?, ?, ?, ?, ?, ?)''',
                 ('Administrador', '', legacy_admin[0], legacy_admin[1], 'A definir', datetime.now().isoformat(timespec='seconds')),
             )
+        user_columns = {row[1] for row in db.execute('PRAGMA table_info(users)')}
+        if 'manage_users' not in user_columns:
+            db.execute('ALTER TABLE users ADD COLUMN manage_users INTEGER NOT NULL DEFAULT 0')
+            # A permissão pertence à conta original; editar o nome não concede privilégios.
+            db.execute("""UPDATE users SET manage_users=1 WHERE id=(
+                SELECT id FROM users WHERE trim(first_name)='Administrador'
+                ORDER BY CASE WHEN email=(SELECT email FROM admin WHERE id=1) THEN 0 ELSE 1 END, id LIMIT 1)""")
+        for column, declaration in [('last_seen', 'REAL'), ('avatar', "TEXT NOT NULL DEFAULT ''")]:
+            if column not in user_columns:
+                db.execute(f'ALTER TABLE users ADD COLUMN {column} {declaration}')
     os.chmod(db_path, 0o600)
     dummy_hash = generate_password_hash(secrets.token_urlsafe(32), method='scrypt')
 
@@ -205,6 +217,9 @@ def create_app(test_config=None):
             return False
         row = db().execute('SELECT expires, email FROM sessions WHERE token_hash = ?', (digest(token),)).fetchone()
         if row and row['expires'] > now():
+            g.current_user = db().execute('SELECT * FROM users WHERE email=?', (row['email'],)).fetchone()
+            if g.current_user is None:
+                return False
             g.user_email = row['email']
             return True
         session.pop('auth', None)
@@ -212,7 +227,12 @@ def create_app(test_config=None):
 
     @app.context_processor
     def authentication_context():
-        return {'admin_authenticated': bool(getattr(g, 'admin_authenticated', False))}
+        return {'admin_authenticated': bool(getattr(g, 'admin_authenticated', False)),
+                'current_user': getattr(g, 'current_user', None)}
+
+    @app.template_filter('last_seen_label')
+    def last_seen_label(value):
+        return datetime.fromtimestamp(value, ZoneInfo('America/Sao_Paulo')).strftime('%d/%m/%Y às %H:%M') if value else 'Sem acesso registrado'
 
     @app.before_request
     def protect_requests():
@@ -228,6 +248,14 @@ def create_app(test_config=None):
             }
             if request.endpoint not in public_endpoints and not g.admin_authenticated:
                 return redirect(url_for('login'))
+            if g.admin_authenticated:
+                if request.endpoint in {'users_admin', 'register', 'send_user_reset'} and not g.current_user['manage_users']:
+                    abort(403)
+                if request.endpoint == 'edit_user' and not g.current_user['manage_users'] and request.view_args['user_id'] != g.current_user['id']:
+                    abort(403)
+                if not g.current_user['last_seen'] or now() - g.current_user['last_seen'] >= 60:
+                    with db() as connection:
+                        connection.execute('UPDATE users SET last_seen=? WHERE id=?', (now(), g.current_user['id']))
         if request.method == 'POST':
             supplied = request.form.get('csrf_token', '')
             expected = session.get('csrf', '')
@@ -522,6 +550,7 @@ def create_app(test_config=None):
                 else:
                     connection.execute('DELETE FROM challenges WHERE id = ?', (challenge_id,))
                     token = secrets.token_urlsafe(32)
+                    connection.execute('UPDATE users SET last_seen=? WHERE email=?', (now(), row['email']))
                     connection.execute(
                         'INSERT INTO sessions (token_hash, expires, email) VALUES (?, ?, ?)',
                         (digest(token), now() + SESSION_LIFETIME, row['email']),
@@ -585,7 +614,7 @@ def create_app(test_config=None):
     @app.get('/admin/usuarios')
     def users_admin():
         users = db().execute(
-            '''SELECT id, first_name, last_name, email, city, created_at
+            '''SELECT id, first_name, last_name, email, city, created_at, last_seen
                FROM users ORDER BY first_name COLLATE NOCASE, last_name COLLATE NOCASE, id'''
         ).fetchall()
         message = 'Novo usuário criado com sucesso.' if request.args.get('created') == '1' else None
@@ -606,7 +635,8 @@ def create_app(test_config=None):
         for field in ('first_name', 'last_name', 'email', 'city'):
             values[field] = request.form.get(field, '').strip()
         values['email'] = values['email'].lower()
-        if (any(not values[field] or len(values[field]) > 100 for field in ('first_name', 'last_name', 'city'))
+        if (any(not values[field] or len(values[field]) > 100 for field in ('first_name', 'city'))
+                or len(values['last_name']) > 100
                 or not valid_email(values['email'])):
             return render_template('edit_user.html', user=values,
                                    error='Preencha nome, sobrenome e cidade com até 100 caracteres e informe um e-mail válido.'), 400
@@ -628,7 +658,38 @@ def create_app(test_config=None):
         if values['email'] != user['email'] and g.user_email == user['email']:
             session.clear()
             return redirect(url_for('login'), code=303)
-        return redirect(url_for('users_admin', updated='1'), code=303)
+        return redirect(url_for('profile' if request.endpoint == 'profile' or not g.current_user['manage_users'] else 'users_admin', updated='1'), code=303)
+
+    @app.route('/admin/perfil', methods=['GET', 'POST'])
+    def profile():
+        if request.method == 'POST':
+            return edit_user(g.current_user['id'])
+        return render_template('profile.html', user=g.current_user,
+                               message='Perfil atualizado.' if request.args.get('updated') else None)
+
+    @app.post('/admin/perfil/foto')
+    def profile_photo():
+        upload = request.files.get('image')
+        if not upload or not upload.filename:
+            return render_template('profile.html', user=g.current_user, error='Selecione uma foto.'), 400
+        try:
+            filename, _mime = store_photo(upload, avatar_dir)
+        except ValueError as error:
+            return render_template('profile.html', user=g.current_user, error=str(error)), 400
+        with db() as connection:
+            connection.execute('UPDATE users SET avatar=? WHERE id=?', (filename, g.current_user['id']))
+        if g.current_user['avatar']:
+            (avatar_dir / g.current_user['avatar']).unlink(missing_ok=True)
+        return redirect(url_for('profile', updated='1'), code=303)
+
+    @app.get('/admin/perfil/foto/<int:user_id>')
+    def avatar(user_id):
+        if user_id != g.current_user['id'] and not g.current_user['manage_users']:
+            abort(403)
+        user = db().execute('SELECT avatar FROM users WHERE id=?', (user_id,)).fetchone()
+        if not user or not user['avatar']:
+            abort(404)
+        return send_file(avatar_dir / user['avatar'])
 
     @app.post('/admin/sair')
     def logout():
@@ -729,7 +790,7 @@ def create_app(test_config=None):
             raise
         return redirect('/admin/portfolio?saved=1')
 
-    def store_photo(upload):
+    def store_photo(upload, destination=None):
         header = upload.stream.read(16)
         upload.stream.seek(0)
         signatures = (
@@ -742,7 +803,7 @@ def create_app(test_config=None):
             raise ValueError('O arquivo precisa ser uma imagem JPEG, PNG ou WebP válida.')
         extension, mime_type = detected
         filename = f'{secrets.token_hex(16)}{extension}'
-        target = portfolio_dir / filename
+        target = (destination or portfolio_dir) / filename
         upload.save(target)
         os.chmod(target, 0o600)
         return filename, mime_type
@@ -935,10 +996,11 @@ def create_app(test_config=None):
         return redirect('/admin/?deleted=1')
 
     @app.errorhandler(400)
+    @app.errorhandler(403)
     @app.errorhandler(404)
     @app.errorhandler(413)
     def error_page(error):
-        descriptions = {400: 'Atualize a página e tente novamente.', 404: 'Esta página não foi encontrada.', 413: 'A solicitação ultrapassou o tamanho permitido.'}
+        descriptions = {400: 'Atualize a página e tente novamente.', 403: 'Sua conta não tem permissão para acessar esta área.', 404: 'Esta página não foi encontrada.', 413: 'A solicitação ultrapassou o tamanho permitido.'}
         return render_template('error.html', message=descriptions[error.code]), error.code
 
     return app
@@ -990,6 +1052,8 @@ def main():
                        VALUES (?, ?, ?, ?, ?, ?)''',
                     ('Administrador', '', email, password_hash, 'A definir', datetime.now().isoformat(timespec='seconds')),
                 )
+            if not connection.execute('SELECT 1 FROM users WHERE manage_users=1').fetchone():
+                connection.execute('UPDATE users SET manage_users=1 WHERE email=?', (email,))
             connection.execute('DELETE FROM sessions')
             connection.execute('DELETE FROM challenges')
         print('Administrador configurado. A senha foi armazenada como hash; sessões anteriores foram encerradas.')

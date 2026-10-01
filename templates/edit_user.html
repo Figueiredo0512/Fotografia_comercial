@@ -16,12 +16,14 @@
     </div>
     <button class="button" type="submit">Salvar alterações <span aria-hidden="true">↗</span></button>
   </form>
-  <a class="return-link" href="/admin/usuarios">Cancelar e voltar para usuários</a>
+  <a class="return-link" href="{{ '/admin/usuarios' if current_user.manage_users else '/admin/perfil' }}">Voltar</a>
+  {% if current_user.manage_users %}
   <form method="post" action="/admin/usuarios/{{ user.id }}/enviar-reset">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <p>Enviar para: <strong>{{ user.saved_email or user.email }}</strong></p>
     <p>Salve alterações de e-mail antes de enviar. A senha só muda quando a pessoa concluir a redefinição. O link é válido por 10 minutos.</p>
     <button class="button" type="submit">Enviar link de redefinição de senha</button>
   </form>
+  {% endif %}
 </section>
 {% endblock %}

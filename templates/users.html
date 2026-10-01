@@ -11,8 +11,8 @@
   {% if users %}<div class="users-grid">
     {% for user in users %}<article class="user-card">
       <span class="user-initials" aria-hidden="true">{{ user.first_name[:1]|upper }}{{ user.last_name[:1]|upper }}</span>
-      <div><h2>{{ user.first_name }} {{ user.last_name }}</h2><p class="account-email">{{ user.email }}</p></div>
-      <dl><div><dt>Cidade</dt><dd>{{ user.city }}</dd></div><div><dt>Cadastrado em</dt><dd>{{ user.created_at[8:10] }}/{{ user.created_at[5:7] }}/{{ user.created_at[:4] }}</dd></div></dl>
+      <div class="user-identity"><h2>{{ user.first_name }} {{ user.last_name }}</h2><p class="account-email">{{ user.email }}</p></div>
+      <dl><div><dt>Cidade</dt><dd>{{ user.city }}</dd></div><div><dt>Cadastrado em</dt><dd>{{ user.created_at[8:10] }}/{{ user.created_at[5:7] }}/{{ user.created_at[:4] }}</dd></div><div class="user-last-seen"><dt>Última atividade:</dt><dd>{{ user.last_seen|last_seen_label }}<small>Horário de Brasília</small></dd></div></dl>
       <a class="button user-edit-button" href="/admin/usuarios/{{ user.id }}/editar">Editar usuário <span aria-hidden="true">↗</span></a>
     </article>{% endfor %}
   </div>{% else %}<p class="empty-state">Nenhum usuário cadastrado.</p>{% endif %}

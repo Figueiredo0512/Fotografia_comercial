@@ -37,10 +37,77 @@ class AdminPanelTests(unittest.TestCase):
                 ('Admin', 'Teste', 'admin@example.test', password_hash, 'Hortolândia', '2026-09-25T00:00:00'),
             )
         self.login_and_verify()
+        with self.database() as db, db:
+            db.execute('UPDATE users SET manage_users=1 WHERE email=?', ('admin@example.test',))
 
     def csrf(self, client=None):
         with (client or self.client).session_transaction() as session:
             return session['csrf']
+
+    def test_regular_user_can_only_manage_own_profile(self):
+        with self.database() as db, db:
+            db.execute("UPDATE users SET manage_users=0 WHERE id=1")
+            db.execute("INSERT INTO users (first_name,last_name,email,password_hash,city,created_at) VALUES ('Outra','Pessoa','outra@example.test','unused','Campinas','2026-10-01')")
+        self.client.get('/admin/perfil')
+        data = dict(csrf_token=self.csrf(), first_name='Administrador', last_name='Teste', email='admin@example.test', city='Hortolândia', manage_users='1', user_id='2')
+        for path in ['/admin/usuarios', '/admin/cadastro', '/admin/usuarios/2/editar']:
+            self.assertEqual(self.client.get(path).status_code, 403)
+            self.assertEqual(self.client.post(path, data=data).status_code, 403 if path != '/admin/usuarios' else 405)
+        self.assertEqual(self.client.post('/admin/usuarios/2/enviar-reset', data=data).status_code, 403)
+        self.assertEqual(self.client.post('/admin/perfil', data=data).status_code, 303)
+        self.assertEqual(self.client.get('/admin/usuarios').status_code, 403)
+        self.assertNotIn('href="/admin/usuarios"', self.client.get('/admin/').text)
+        with self.database() as db:
+            self.assertEqual(db.execute('SELECT manage_users FROM users WHERE id=1').fetchone()[0], 0)
+            self.assertEqual(db.execute('SELECT first_name FROM users WHERE id=2').fetchone()[0], 'Outra')
+
+    def test_last_seen_requires_verified_login_and_tracks_activity(self):
+        with self.database() as db, db:
+            db.execute('UPDATE users SET last_seen=NULL')
+        visitor = self.app.test_client()
+        visitor.get('/admin/login')
+        visitor.post('/admin/login', data=dict(csrf_token=self.csrf(visitor), email='admin@example.test', password=self.password))
+        with self.database() as db:
+            self.assertIsNone(db.execute('SELECT last_seen FROM users').fetchone()[0])
+        visitor.post('/admin/verificar', data=dict(csrf_token=self.csrf(visitor), code=self.mailbox[-1][1]))
+        with self.database() as db:
+            self.assertIsNotNone(db.execute('SELECT last_seen FROM users').fetchone()[0])
+        self.assertIn('Última atividade:', visitor.get('/admin/usuarios').text)
+
+    def test_profile_avatar_is_private_and_rejects_html(self):
+        self.client.get('/admin/perfil')
+        bad = self.client.post('/admin/perfil/foto', data=dict(csrf_token=self.csrf(), image=(BytesIO(b'<script>bad</script>'), 'photo.jpg')))
+        self.assertEqual(bad.status_code, 400)
+        good = self.client.post('/admin/perfil/foto', data=dict(csrf_token=self.csrf(), image=(BytesIO(b'\x89PNG\r\n\x1a\nphoto'), 'photo.png')))
+        self.assertEqual(good.status_code, 303)
+        response = self.client.get('/admin/perfil/foto/1')
+        self.assertEqual(response.status_code, 200)
+        response.close()
+        self.assertEqual(self.app.test_client().get('/admin/perfil/foto/1').status_code, 302)
+        self.assertIn('profile-avatar', self.client.get('/admin/').text)
+
+    def test_migration_grants_original_named_admin_only_once(self):
+        with self.database() as db, db:
+            db.execute("UPDATE users SET first_name='Administrador'")
+            db.execute('ALTER TABLE users DROP COLUMN manage_users')
+        create_app({'TESTING':True, 'SECRET_KEY':'test', 'DATA_DIR':self.directory.name})
+        with self.database() as db:
+            self.assertEqual(db.execute('SELECT manage_users FROM users').fetchone()[0], 1)
+        with self.database() as db, db:
+            db.execute("UPDATE users SET first_name='Administrador', manage_users=0")
+        create_app({'TESTING':True, 'SECRET_KEY':'test', 'DATA_DIR':self.directory.name})
+        with self.database() as db:
+            self.assertEqual(db.execute('SELECT manage_users FROM users').fetchone()[0], 0)
+
+    def test_own_email_change_revokes_session_and_keeps_role(self):
+        with self.database() as db, db:
+            db.execute('UPDATE users SET manage_users=0')
+        self.client.get('/admin/perfil')
+        result = self.client.post('/admin/perfil', data=dict(csrf_token=self.csrf(), first_name='Pessoa', last_name='Teste', email='novo@example.test', city='Campinas'))
+        self.assertEqual(result.location, '/admin/login')
+        self.assertEqual(self.client.get('/admin/perfil').status_code, 302)
+        with self.database() as db:
+            self.assertEqual(db.execute('SELECT email,manage_users FROM users').fetchone(), ('novo@example.test', 0))
 
     def login_and_verify(self, client=None):
         client = client or self.client

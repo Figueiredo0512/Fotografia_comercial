@@ -81,3 +81,10 @@ O domínio acima é um exemplo, não uma configuração já aplicada. O proxy Ng
 Certificado, proxy, serviço de inicialização automática, backups e envio real de e-mail ainda precisam ser configurados e verificados na hospedagem escolhida. Os testes locais simulam HTTPS; não confirmam TLS em um servidor público.
 
 As decisões de cookies, CSRF e cabeçalhos seguem a [documentação de segurança do Flask](https://flask.palletsprojects.com/en/stable/web-security/).
+# Perfis e permissões
+
+O incremento de 01/10/2026 foi desenvolvido na branch `feature/perfil-permissoes` e aprovado para main e produção. A conta original chamada Administrador recebe permissão persistente para listar, cadastrar, editar e enviar redefinição aos usuários. Alterar o nome de uma conta não concede essa permissão. Demais contas podem editar somente os próprios dados em `/admin/perfil` e mantêm acesso à agenda e ao portfólio. O servidor local permanece como ambiente de teste para próximos incrementos.
+
+O link Meu perfil fica à direita do cabeçalho. Fotos de perfil ficam na pasta privada `avatars`, fora do Git e do portfólio público, acessíveis apenas à própria conta e ao gestor. A mudança de e-mail encerra sessões anteriores. Senhas continuam usando a recuperação por e-mail existente.
+
+Última atividade é registrada depois da confirmação do código de login e em requisições autenticadas, com intervalo mínimo de um minuto. A lista de usuários exibe horário de Brasília. Não é indicação de presença online; contas sem registro aparecem como Sem acesso registrado, sem inventar histórico.
