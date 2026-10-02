@@ -23,7 +23,11 @@
       <h2 id="photo-dialog-title">{{ selected.title }}</h2>
       <a class="photo-dialog-close" href="/portfolio#foto-{{ selected.id }}" aria-label="Fechar imagem" autofocus><span aria-hidden="true">×</span></a>
     </header>
-    <img src="/portfolio/imagens/{{ selected.filename }}" alt="{{ selected.title }}">
+    <div class="photo-dialog-viewer">
+      <button type="button" class="photo-arrow photo-arrow-prev" aria-label="Foto anterior" {% if images|length < 2 %}disabled{% endif %}>‹</button>
+      <img src="/portfolio/imagens/{{ selected.filename }}" alt="{{ selected.title }}">
+      <button type="button" class="photo-arrow photo-arrow-next" aria-label="Próxima foto" {% if images|length < 2 %}disabled{% endif %}>›</button>
+    </div>
     {% if selected.description %}<p class="photo-dialog-description">{{ selected.description }}</p>{% endif %}
   </dialog>
   {% endif %}

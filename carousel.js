@@ -3,7 +3,40 @@
   if (dialog) {
     dialog.removeAttribute('open');
     dialog.showModal();
-    const close = () => { window.location.href = dialog.querySelector('a').href; };
+    const closeLink = dialog.querySelector('.photo-dialog-close');
+    const close = () => { window.location.href = closeLink.href; };
+    const photos = [...document.querySelectorAll('.public-gallery figure')];
+    let current = photos.findIndex(photo => '#' + photo.id === new URL(closeLink.href).hash);
+    const navigate = direction => {
+      if (photos.length < 2 || current < 0) return;
+      current = (current + direction + photos.length) % photos.length;
+      const photo = photos[current];
+      const source = photo.querySelector('img');
+      const image = dialog.querySelector('.photo-dialog-viewer img');
+      image.src = source.src;
+      image.alt = source.alt;
+      dialog.querySelector('h2').textContent = photo.querySelector('h2').textContent;
+      let description = dialog.querySelector('.photo-dialog-description');
+      const text = photo.querySelector('figcaption p')?.textContent;
+      if (text) {
+        if (!description) {
+          description = document.createElement('p');
+          description.className = 'photo-dialog-description';
+          dialog.append(description);
+        }
+        description.textContent = text;
+      } else description?.remove();
+      closeLink.href = '/portfolio#' + photo.id;
+      history.replaceState(null, '', photo.querySelector('a').href);
+    };
+    dialog.querySelector('.photo-arrow-prev').addEventListener('click', () => navigate(-1));
+    dialog.querySelector('.photo-arrow-next').addEventListener('click', () => navigate(1));
+    dialog.addEventListener('keydown', event => {
+      if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+        event.preventDefault();
+        navigate(event.key === 'ArrowLeft' ? -1 : 1);
+      }
+    });
     dialog.addEventListener('cancel', event => { event.preventDefault(); close(); });
     dialog.addEventListener('click', event => { if (event.target === dialog) close(); });
   }

@@ -16,10 +16,19 @@
 .photo-dialog::backdrop { background: #0d0c0bea; backdrop-filter: blur(8px); }
 .photo-dialog-header { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 20px 24px; border-bottom: 1px solid #ffffff1f; }
 .photo-dialog h2 { margin: 0; min-width: 0; font: normal clamp(23px, 3vw, 34px)/1.2 var(--serif); letter-spacing: -.4px; overflow-wrap: anywhere; }
-.photo-dialog > img { display: block; width: 100%; height: min(68dvh, 800px); object-fit: contain; margin: 0; background: #100f0d; }
+.photo-dialog-viewer > img { display: block; width: 100%; height: min(68dvh, 800px); object-fit: contain; margin: 0; background: #100f0d; }
 .photo-dialog-close { display: grid; place-items: center; flex: 0 0 44px; width: 44px; height: 44px; border: 1px solid #ffffff40; border-radius: 50%; color: #faf7f2; font: 30px/1 Arial, sans-serif; text-decoration: none; }
 .photo-dialog-close:hover { background: #ffffff18; text-decoration: none; }
 .photo-dialog-close:focus-visible { outline: 2px solid #e6c2a3; outline-offset: 4px; }
 .photo-dialog-description { margin: 0; padding: 18px 24px 22px; border-top: 1px solid #ffffff1f; color: #ddd2c6; font-size: 15px; line-height: 1.6; overflow-wrap: anywhere; white-space: pre-line; }
-@media(max-width:650px) { .photo-dialog { width: 96vw; border-radius: 12px; } .photo-dialog-header { padding: 14px 16px; gap: 12px; } .photo-dialog-description { padding: 16px; } .photo-dialog > img { height: 62dvh; } }
+@media(max-width:650px) { .photo-dialog { width: 96vw; border-radius: 12px; } .photo-dialog-header { padding: 14px 16px; gap: 12px; } .photo-dialog-description { padding: 16px; } .photo-dialog-viewer > img { height: 62dvh; } }
 .public-gallery figure { scroll-margin-top: 24px; }
+
+.photo-dialog-viewer { position: relative; }
+.photo-arrow { position: absolute; top: 50%; transform: translateY(-50%); z-index: 1; width: 48px; height: 48px; display: grid; place-items: center; padding: 0 0 4px; border: 1px solid #ffffff66; border-radius: 50%; background: #191714d9; color: #fff; font: 38px/1 Georgia, serif; cursor: pointer; box-shadow: 0 3px 14px #0006; }
+.photo-arrow-prev { left: 16px; }
+.photo-arrow-next { right: 16px; }
+.photo-arrow:hover { background: #9b4d35; }
+.photo-arrow:focus-visible { outline: 2px solid #e6c2a3; outline-offset: 4px; }
+.photo-arrow:disabled { opacity: .3; cursor: default; }
+@media(max-width:650px) { .photo-arrow { width: 44px; height: 44px; } .photo-arrow-prev { left: 8px; } .photo-arrow-next { right: 8px; } }
