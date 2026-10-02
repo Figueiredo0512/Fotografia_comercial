@@ -1,35 +1,56 @@
 (() => {
+  const dialog = document.querySelector('.photo-dialog');
+  if (dialog) {
+    dialog.removeAttribute('open');
+    dialog.showModal();
+    const close = () => { window.location.href = dialog.querySelector('a').href; };
+    dialog.addEventListener('cancel', event => { event.preventDefault(); close(); });
+    dialog.addEventListener('click', event => { if (event.target === dialog) close(); });
+  }
   const carousel = document.querySelector('.portfolio-carousel');
   if (!carousel) return;
+  const track = carousel.querySelector('.gallery-carousel');
+  const originals = [...track.children];
+  if (originals.length < 2) return;
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
-  let paused = reduced.matches;
-  let hovered = false;
-  let visible = false;
-  let timer;
-  const update = () => {
-    clearInterval(timer);
-    if (paused || hovered || !visible || document.hidden || carousel.contains(document.activeElement)) return;
-    timer = setInterval(() => {
-      const items = [...carousel.querySelectorAll('.carousel-item')];
-      const current = carousel.scrollLeft;
-      const end = carousel.scrollWidth - carousel.clientWidth;
-      const first = items[0].getBoundingClientRect().left;
-      const next = items.map(item => item.getBoundingClientRect().left - first)
-        .find(offset => offset > current + 4);
-      carousel.scrollTo({left: current >= end - 4 ? 0 : Math.min(next ?? end, end),
-        behavior: reduced.matches ? 'instant' : 'smooth'});
-    }, 4500);
+  // Repete a seleção visualmente para atravessar a última foto sem salto.
+  for (const item of originals) {
+    const clone = item.cloneNode(true);
+    clone.setAttribute('aria-hidden', 'true');
+    clone.dataset.clone = 'true';
+    clone.querySelectorAll('a').forEach(link => { link.tabIndex = -1; });
+    track.append(clone);
+  }
+  const firstClone = track.children[originals.length];
+  let span = 0;
+  let position = carousel.scrollLeft;
+  let previous = null;
+  let hovered = carousel.matches(':hover');
+  let touching = false;
+  const keyboardFocus = () => carousel.matches(':focus-visible') || Boolean(carousel.querySelector(':focus-visible'));
+  const measure = () => {
+    span = firstClone.getBoundingClientRect().left - originals[0].getBoundingClientRect().left;
+    position = carousel.scrollLeft;
   };
-  carousel.addEventListener('mouseenter', () => { hovered = true; update(); });
-  carousel.addEventListener('mouseleave', () => { hovered = false; update(); });
-  carousel.addEventListener('focusin', update);
-  carousel.addEventListener('focusout', () => setTimeout(update, 0));
-  carousel.addEventListener('touchstart', () => { paused = true; update(); }, {passive: true});
-  carousel.addEventListener('touchend', () => { paused = reduced.matches; update(); }, {passive: true});
-  carousel.addEventListener('touchcancel', () => { paused = reduced.matches; update(); }, {passive: true});
-  document.addEventListener('visibilitychange', update);
-  reduced.addEventListener('change', () => { paused = reduced.matches; update(); });
-  new IntersectionObserver(entries => { visible = entries[0].isIntersecting; update(); },
-    {threshold: 0.15}).observe(carousel);
-  update();
+  new ResizeObserver(measure).observe(carousel);
+  measure();
+  carousel.addEventListener('mouseenter', () => { hovered = true; });
+  carousel.addEventListener('mouseleave', () => { hovered = false; });
+  carousel.addEventListener('touchstart', () => { touching = true; }, {passive: true});
+  for (const type of ['touchend', 'touchcancel']) {
+    carousel.addEventListener(type, () => { touching = false; position = carousel.scrollLeft; }, {passive: true});
+  }
+  carousel.addEventListener('scroll', () => {
+    if (hovered || touching || reduced.matches || keyboardFocus()) position = carousel.scrollLeft;
+  }, {passive: true});
+  const animate = timestamp => {
+    const elapsed = previous === null ? 0 : Math.min(timestamp - previous, 50);
+    previous = timestamp;
+    if (span > 0 && !hovered && !touching && !keyboardFocus() && !reduced.matches && !document.hidden) {
+      position = (position + elapsed * 0.035) % span;
+      carousel.scrollLeft = position;
+    }
+    requestAnimationFrame(animate);
+  };
+  requestAnimationFrame(animate);
 })();

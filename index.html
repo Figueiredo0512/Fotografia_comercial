@@ -31,14 +31,13 @@
       <div class="portfolio-actions"><a class="button portfolio-more" href="/portfolio">Ver mais <span aria-hidden="true">↗</span></a></div>
       <div class="portfolio-carousel" id="portfolio-carousel" tabindex="0" aria-label="Seleção do portfólio. Deslize horizontalmente para ver todas as imagens.">
         <div class="gallery gallery-carousel">
-          {% for position in range(5) %}
+          {% for position in range(6) %}
             {% if position < portfolio_images|length %}{% set image = portfolio_images[position] %}
-            <figure class="carousel-item"><div class="gallery-image portfolio-photo"><span class="image-number">{{ '%02d'|format(position + 1) }}</span><img src="/portfolio/imagens/{{ image.filename }}" alt="{{ image.title }}" loading="lazy"></div><figcaption><h3>{{ image.title }}</h3>{% if image.description %}<span>{{ image.description }}</span>{% else %}<span>FOTOGRAFIA AUTORAL</span>{% endif %}</figcaption></figure>
+            <figure class="carousel-item"><a class="gallery-image portfolio-photo" href="/portfolio?foto={{ image.id }}#foto-{{ image.id }}" aria-label="Abrir {{ image.title }} no portfólio"><span class="image-number">{{ '%02d'|format(position + 1) }}</span><img src="/portfolio/imagens/{{ image.filename }}" alt="{{ image.title }}" loading="lazy"></a><figcaption><h3>{{ image.title }}</h3>{% if image.description %}<span>{{ image.description }}</span>{% else %}<span>FOTOGRAFIA AUTORAL</span>{% endif %}</figcaption></figure>
             {% else %}
             <figure class="carousel-item"><div class="gallery-image {{ ['tone-one', 'tone-two', 'tone-three'][position % 3] }}"><span class="image-number">{{ '%02d'|format(position + 1) }}</span><div class="placeholder-word" aria-hidden="true">Em breve.</div><span class="placeholder-caption">Espaço reservado<br>Foto autoral a produzir</span></div><figcaption><h3>Nova história em preparação</h3><span>PORTFÓLIO EM CONSTRUÇÃO</span></figcaption></figure>
             {% endif %}
           {% endfor %}
-          <a class="carousel-item more-card" href="/portfolio"><span class="image-number">06</span><strong>Ver mais</strong><span>Conheça a galeria completa <span aria-hidden="true">↗</span></span></a>
         </div>
       </div><p class="gallery-note">Arraste ou deslize para navegar pela seleção. Somente fotografias próprias cadastradas no painel são apresentadas como trabalhos.</p>
     </section>

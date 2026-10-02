@@ -359,7 +359,7 @@ def create_app(test_config=None):
     @app.get('/index.html')
     def home():
         images = db().execute(
-            "SELECT filename, title, description FROM portfolio_images WHERE hidden = 0 AND placement = 'portfolio' ORDER BY id DESC LIMIT 5"
+            "SELECT id, filename, title, description FROM portfolio_images WHERE hidden = 0 AND placement = 'portfolio' ORDER BY id DESC LIMIT 6"
         ).fetchall()
         hero = db().execute("SELECT filename, title, description FROM portfolio_images WHERE hidden = 0 AND placement = 'hero' ORDER BY id DESC LIMIT 1").fetchone()
         return render_template_string((ROOT / 'index.html').read_text(), portfolio_images=images, hero_image=hero)
@@ -367,9 +367,10 @@ def create_app(test_config=None):
     @app.get('/portfolio')
     def public_portfolio():
         images = db().execute(
-            "SELECT filename, title, description FROM portfolio_images WHERE hidden = 0 AND placement = 'portfolio' ORDER BY id DESC"
+            "SELECT id, filename, title, description FROM portfolio_images WHERE hidden = 0 AND placement = 'portfolio' ORDER BY id DESC"
         ).fetchall()
-        return render_template('public_portfolio.html', images=images)
+        selected = next((image for image in images if str(image['id']) == request.args.get('foto')), None)
+        return render_template('public_portfolio.html', images=images, selected=selected)
 
     @app.get('/<filename>')
     def asset(filename):

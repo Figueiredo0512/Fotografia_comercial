@@ -246,10 +246,26 @@ class AdminPanelTests(unittest.TestCase):
         self.assertIn('Café especial', home.text)
         self.assertIn(f'/portfolio/imagens/{filename}', home.text)
         self.assertEqual(home.text.count('class="carousel-item'), 6)
-        self.assertIn('>Ver mais</strong>', home.text)
+        self.assertNotIn('more-card', home.text)
         full_gallery = self.client.get('/portfolio')
         self.assertEqual(full_gallery.status_code, 200)
         self.assertIn('Café especial', full_gallery.text)
+
+    def test_carousel_selects_six_and_opens_only_public_photo(self):
+        with self.database() as db, db:
+            for number in range(8):
+                db.execute("INSERT INTO portfolio_images (filename,title,mime_type,created_at) VALUES (?,?,'image/jpeg','2026-10-01')", (f'test-{number}.jpg', f'Foto {number}'))
+            db.execute("UPDATE portfolio_images SET hidden=1 WHERE id=8")
+        home = self.client.get('/').text
+        self.assertEqual(home.count('class="carousel-item'), 6)
+        self.assertIn('/portfolio?foto=7#foto-7', home)
+        self.assertNotIn('/portfolio?foto=8', home)
+        self.assertNotIn('/portfolio?foto=1#', home)
+        selected = self.client.get('/portfolio?foto=7').text
+        self.assertIn('<dialog class="photo-dialog"', selected)
+        self.assertIn('id="photo-dialog-title">Foto 6</h2>', selected)
+        for invalid in ('8', '999', 'abc'):
+            self.assertNotIn('<dialog', self.client.get('/portfolio?foto=' + invalid).text)
 
     def test_users_menu_lists_registered_accounts_without_secrets(self):
         dashboard = self.client.get('/admin/')
